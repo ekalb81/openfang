@@ -877,11 +877,17 @@ fn resolve_provider_with_models_context(
     } else if api_hint.contains("openai") {
         if raw_is_known {
             mapped.clone()
+        } else if mapped_is_known {
+            if base_url.is_some() {
+                // Preserve custom alias IDs only when runtime can route them via
+                // explicit provider metadata.
+                raw.clone()
+            } else {
+                mapped.clone()
+            }
         } else if base_url.is_some() {
             // Preserve custom IDs only when runtime can route them via base_url.
             raw.clone()
-        } else if mapped_is_known {
-            mapped.clone()
         } else {
             // Unknown custom ID without base_url would fail at runtime; default to
             // OpenAI-compatible driver.
@@ -4158,6 +4164,31 @@ mod tests {
         assert_eq!(resolved.provider, "openai");
         assert_eq!(resolved.model, "custom-model");
         assert_eq!(resolved.base_url, None);
+    }
+
+    #[test]
+    fn test_model_ref_split_with_catalog_known_openai_alias_without_base_url_uses_canonical_driver()
+    {
+        let providers = json!({
+            "qwencode": {
+                "api": "openai-completions"
+            },
+            "kimicode": {
+                "api": "openai-completions"
+            }
+        });
+
+        let catalog = providers.as_object().unwrap();
+        let qwen_resolved = split_model_ref_with_context("qwencode/glm-5", Some(catalog));
+        let moonshot_resolved = split_model_ref_with_context("kimicode/kimi-k2.5", Some(catalog));
+
+        assert_eq!(qwen_resolved.provider, "qwen");
+        assert_eq!(qwen_resolved.model, "glm-5");
+        assert_eq!(qwen_resolved.base_url, None);
+
+        assert_eq!(moonshot_resolved.provider, "moonshot");
+        assert_eq!(moonshot_resolved.model, "kimi-k2.5");
+        assert_eq!(moonshot_resolved.base_url, None);
     }
 
     #[test]
