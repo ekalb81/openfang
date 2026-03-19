@@ -16,9 +16,19 @@ pub const OPENAI_AUTH_URL: &str = "https://auth.openai.com/oauth/authorize";
 pub const OPENAI_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 pub const DEFAULT_REDIRECT_URI: &str = "http://127.0.0.1:1455/api/providers/openai/oauth/callback";
 
+fn default_provider() -> String {
+    "openai".to_string()
+}
+
+fn default_mode() -> String {
+    "oauth".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenAIOAuthCredentials {
+    #[serde(default = "default_provider")]
     pub provider: String,
+    #[serde(default = "default_mode")]
     pub mode: String,
     pub access: String,
     pub refresh: String,
@@ -381,7 +391,10 @@ fn extract_jwt_claim(jwt: &str, key: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_REDIRECT_URI, generate_pkce_start};
+    use super::{
+        DEFAULT_REDIRECT_URI, default_mode, default_provider, generate_pkce_start, load_credentials,
+    };
+    use tempfile::tempdir;
 
     #[test]
     fn generate_pkce_start_preserves_valid_redirect_uri() {
@@ -403,5 +416,30 @@ mod tests {
         assert!(start.auth_url.contains(
             "redirect_uri=http%3A%2F%2F127.0.0.1%3A1455%2Fapi%2Fproviders%2Fopenai%2Foauth%2Fcallback"
         ));
+    }
+
+    #[test]
+    fn load_credentials_accepts_legacy_json_without_provider_or_mode() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("openai-oauth.json");
+        std::fs::write(
+            &path,
+            r#"{
+  "access": "access-token",
+  "refresh": "refresh-token",
+  "expires": 1234567890
+}"#,
+        )
+        .unwrap();
+
+        let creds = load_credentials(&path).expect("legacy credentials should load");
+
+        assert_eq!(creds.provider, default_provider());
+        assert_eq!(creds.mode, default_mode());
+        assert_eq!(creds.access, "access-token");
+        assert_eq!(creds.refresh, "refresh-token");
+        assert_eq!(creds.expires, 1234567890);
+        assert_eq!(creds.account_id, None);
+        assert_eq!(creds.email, None);
     }
 }
