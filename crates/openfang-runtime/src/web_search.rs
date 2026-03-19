@@ -10,6 +10,7 @@
 use crate::web_cache::WebCache;
 use crate::web_content::wrap_external_content;
 use openfang_types::config::{SearchProvider, WebConfig};
+use std::borrow::Cow;
 use std::sync::Arc;
 use tracing::{debug, warn};
 use zeroize::Zeroizing;
@@ -41,10 +42,19 @@ impl WebSearchEngine {
         }
     }
 
+    fn cache_scope(&self) -> Cow<'_, str> {
+        cache_scope_for_config(
+            &self.config,
+            resolve_api_key(&self.config.tavily.api_key_env).is_some(),
+            resolve_api_key(&self.config.brave.api_key_env).is_some(),
+            resolve_api_key(&self.config.perplexity.api_key_env).is_some(),
+        )
+    }
+
     /// Perform a web search using the configured provider (or auto-fallback).
     pub async fn search(&self, query: &str, max_results: usize) -> Result<String, String> {
         // Check cache first
-        let cache_key = format!("search:{}:{}", query, max_results);
+        let cache_key = format!("search:{}:{}:{}", self.cache_scope(), query, max_results);
         if let Some(cached) = self.cache.get(&cache_key) {
             debug!(query, "Search cache hit");
             return Ok(cached);
@@ -419,6 +429,38 @@ pub fn urldecode(s: &str) -> String {
     result
 }
 
+fn cache_scope_for_config(
+    config: &WebConfig,
+    tavily_available: bool,
+    brave_available: bool,
+    perplexity_available: bool,
+) -> Cow<'_, str> {
+    match config.search_provider {
+        SearchProvider::Brave => Cow::Owned(format!(
+            "brave:{}:{}:{}",
+            config.brave.country, config.brave.search_lang, config.brave.freshness
+        )),
+        SearchProvider::Tavily => Cow::Owned(format!(
+            "tavily:{}:{}",
+            config.tavily.search_depth, config.tavily.include_answer
+        )),
+        SearchProvider::Perplexity => Cow::Owned(format!("perplexity:{}", config.perplexity.model)),
+        SearchProvider::DuckDuckGo => Cow::Borrowed("duckduckgo"),
+        SearchProvider::Auto => Cow::Owned(format!(
+            "auto:tavily={}:depth={}:answer={}:brave={}:country={}:lang={}:freshness={}:perplexity={}:model={}",
+            tavily_available,
+            config.tavily.search_depth,
+            config.tavily.include_answer,
+            brave_available,
+            config.brave.country,
+            config.brave.search_lang,
+            config.brave.freshness,
+            perplexity_available,
+            config.perplexity.model
+        )),
+    }
+}
+
 /// Resolve an API key from an environment variable name.
 /// Returns `Zeroizing<String>` that auto-wipes from memory on drop.
 fn resolve_api_key(env_var: &str) -> Option<Zeroizing<String>> {
@@ -463,5 +505,49 @@ mod tests {
         let results = parse_ddg_results(html, 5);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].1, "https://example.com");
+    }
+
+    #[test]
+    fn test_cache_scope_separates_explicit_providers() {
+        let brave = WebConfig {
+            search_provider: SearchProvider::Brave,
+            ..WebConfig::default()
+        };
+        let tavily = WebConfig {
+            search_provider: SearchProvider::Tavily,
+            ..WebConfig::default()
+        };
+
+        assert_ne!(
+            cache_scope_for_config(&brave, false, false, false),
+            cache_scope_for_config(&tavily, false, false, false)
+        );
+    }
+
+    #[test]
+    fn test_cache_scope_separates_brave_locales() {
+        let mut us = WebConfig {
+            search_provider: SearchProvider::Brave,
+            ..WebConfig::default()
+        };
+        us.brave.country = "US".to_string();
+
+        let mut de = us.clone();
+        de.brave.country = "DE".to_string();
+
+        assert_ne!(
+            cache_scope_for_config(&us, false, true, false),
+            cache_scope_for_config(&de, false, true, false)
+        );
+    }
+
+    #[test]
+    fn test_cache_scope_separates_auto_provider_availability() {
+        let config = WebConfig::default();
+
+        assert_ne!(
+            cache_scope_for_config(&config, true, false, false),
+            cache_scope_for_config(&config, false, true, false)
+        );
     }
 }
