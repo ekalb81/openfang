@@ -114,9 +114,25 @@ pub fn default_store_path() -> PathBuf {
 }
 
 pub fn load_credentials(path: &Path) -> Option<OpenAIOAuthCredentials> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let creds: OpenAIOAuthCredentials = serde_json::from_str(&content).ok()?;
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(error) => {
+            warn!(path = %path.display(), %error, "Failed to read OpenAI OAuth credentials; ignoring cached credentials");
+            return None;
+        }
+    };
+
+    let creds: OpenAIOAuthCredentials = match serde_json::from_str(&content) {
+        Ok(creds) => creds,
+        Err(error) => {
+            warn!(path = %path.display(), %error, "Failed to parse OpenAI OAuth credentials; ignoring cached credentials");
+            return None;
+        }
+    };
+
     if creds.access.trim().is_empty() {
+        warn!(path = %path.display(), "OpenAI OAuth credentials missing access token; ignoring cached credentials");
         return None;
     }
     Some(creds)
@@ -482,6 +498,18 @@ mod tests {
         assert_eq!(creds.expires, 1234567890);
         assert_eq!(creds.account_id, None);
         assert_eq!(creds.email, None);
+    }
+
+    #[test]
+    fn load_credentials_returns_none_for_invalid_json() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("openai-oauth.json");
+        std::fs::write(&path, "{ definitely not valid json }").unwrap();
+
+        assert!(
+            load_credentials(&path).is_none(),
+            "invalid OAuth credential JSON should be ignored"
+        );
     }
 
     #[test]
