@@ -1801,6 +1801,54 @@ fn unescape_quoted_value(value: &str, quote: char) -> String {
     unescaped
 }
 
+fn reload_env_file_for_channel_hot_reload(path: &std::path::Path) -> Result<usize, std::io::Error> {
+    if !path.exists() {
+        return Ok(0);
+    }
+
+    let content = std::fs::read_to_string(path)?;
+    let mut loaded = 0;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        if let Some((key, value)) = parse_env_line(trimmed) {
+            // Always overwrite — the file is the source of truth during hot reload.
+            std::env::set_var(key, value);
+            loaded += 1;
+        }
+    }
+
+    Ok(loaded)
+}
+
+fn reload_channel_env_from_disk(home_dir: &std::path::Path) {
+    let secrets_path = home_dir.join("secrets.env");
+    match reload_env_file_for_channel_hot_reload(&secrets_path) {
+        Ok(loaded) if loaded > 0 => {
+            info!(path = %secrets_path.display(), loaded, "Reloaded channel env file for hot-reload")
+        }
+        Ok(_) => {}
+        Err(err) => {
+            warn!(path = %secrets_path.display(), error = %err, "Failed to reload channel env file for hot-reload")
+        }
+    }
+
+    let dotenv_path = home_dir.join(".env");
+    match reload_env_file_for_channel_hot_reload(&dotenv_path) {
+        Ok(loaded) if loaded > 0 => {
+            info!(path = %dotenv_path.display(), loaded, "Reloaded channel env file for hot-reload")
+        }
+        Ok(_) => {}
+        Err(err) => {
+            warn!(path = %dotenv_path.display(), error = %err, "Failed to reload channel env file for hot-reload")
+        }
+    }
+}
+
 /// Reload channels from disk config — stops old bridge, starts new one.
 ///
 /// Reads `config.toml` fresh, rebuilds the channel bridge, and stores it
@@ -1817,24 +1865,9 @@ pub async fn reload_channels_from_disk(
         *guard = None;
     }
 
-    // Re-read secrets.env so new API tokens are available in std::env
-    let secrets_path = state.kernel.config.home_dir.join("secrets.env");
-    if secrets_path.exists() {
-        if let Ok(content) = std::fs::read_to_string(&secrets_path) {
-            for line in content.lines() {
-                let trimmed = line.trim();
-                if trimmed.is_empty() || trimmed.starts_with('#') {
-                    continue;
-                }
-
-                if let Some((key, value)) = parse_env_line(trimmed) {
-                    // Always overwrite — the file is the source of truth after dashboard edits
-                    std::env::set_var(key, value);
-                }
-            }
-            info!("Reloaded secrets.env for channel hot-reload");
-        }
-    }
+    // Re-read env files so updated channel config references resolve without restart.
+    // Load secrets first, then .env so .env keeps its usual precedence when both define a key.
+    reload_channel_env_from_disk(&state.kernel.config.home_dir);
 
     // Re-read config from disk
     let config_path = state.kernel.config.home_dir.join("config.toml");
@@ -1861,7 +1894,7 @@ pub async fn reload_channels_from_disk(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_env_line;
+    use super::{parse_env_line, reload_channel_env_from_disk};
 
     #[test]
     fn parse_env_line_unescapes_double_quoted_values() {
@@ -1885,6 +1918,39 @@ mod tests {
 
         assert_eq!(key, "PATH");
         assert_eq!(value, r#"C:\temp\bridge.sock"#);
+    }
+
+    #[test]
+    fn reload_channel_env_from_disk_loads_dotenv_and_preserves_dotenv_precedence() {
+        let dir = tempfile::tempdir().unwrap();
+        let shared_key = "OPENFANG_TEST_CHANNEL_RELOAD_SHARED_KEY";
+        let secret_only = "OPENFANG_TEST_CHANNEL_RELOAD_SECRET_ONLY";
+        let phone = "OPENFANG_TEST_CHANNEL_RELOAD_PHONE";
+
+        std::env::remove_var(shared_key);
+        std::env::remove_var(secret_only);
+        std::env::remove_var(phone);
+
+        std::fs::write(
+            dir.path().join("secrets.env"),
+            format!("{shared_key}=from_secrets\n{secret_only}=secret-token\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join(".env"),
+            format!("{shared_key}=from_dotenv\n{phone}=+15551234567\n"),
+        )
+        .unwrap();
+
+        reload_channel_env_from_disk(dir.path());
+
+        assert_eq!(std::env::var(shared_key).unwrap(), "from_dotenv");
+        assert_eq!(std::env::var(secret_only).unwrap(), "secret-token");
+        assert_eq!(std::env::var(phone).unwrap(), "+15551234567");
+
+        std::env::remove_var(shared_key);
+        std::env::remove_var(secret_only);
+        std::env::remove_var(phone);
     }
 
     #[tokio::test]
