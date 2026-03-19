@@ -16,7 +16,8 @@ use openfang_types::model_catalog::{
     ZAI_CODING_BASE_URL, ZHIPU_BASE_URL, ZHIPU_CODING_BASE_URL,
 };
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use uuid::Uuid;
 
 /// The model catalog — registry of all known models and providers.
 pub struct ModelCatalog {
@@ -342,7 +343,7 @@ impl ModelCatalog {
     }
 
     /// Save all custom-tier models to a JSON file.
-    pub fn save_custom_models(&self, path: &std::path::Path) -> Result<(), String> {
+    pub fn save_custom_models(&self, path: &Path) -> Result<(), String> {
         let custom: Vec<&ModelCatalogEntry> = self
             .models
             .iter()
@@ -350,9 +351,63 @@ impl ModelCatalog {
             .collect();
         let json = serde_json::to_string_pretty(&custom)
             .map_err(|e| format!("Failed to serialize custom models: {e}"))?;
-        std::fs::write(path, json)
-            .map_err(|e| format!("Failed to write custom models file: {e}"))?;
-        Ok(())
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create custom models dir: {e}"))?;
+        }
+
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| "Failed to determine custom models file name".to_string())?;
+        let tmp_path = path.with_file_name(format!(".{file_name}.tmp-{}", Uuid::new_v4()));
+
+        let write_result = (|| -> Result<(), String> {
+            #[cfg(unix)]
+            {
+                use std::fs::OpenOptions;
+                use std::io::Write;
+                use std::os::unix::fs::OpenOptionsExt;
+
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&tmp_path)
+                    .map_err(|e| {
+                        format!("Failed to create temporary custom models file: {e}")
+                    })?;
+                file.write_all(json.as_bytes())
+                    .map_err(|e| format!("Failed to write custom models file: {e}"))?;
+                file.sync_all()
+                    .map_err(|e| format!("Failed to sync custom models file: {e}"))?;
+            }
+
+            #[cfg(not(unix))]
+            {
+                use std::io::Write;
+
+                let mut file = std::fs::File::create(&tmp_path).map_err(|e| {
+                    format!("Failed to create temporary custom models file: {e}")
+                })?;
+                file.write_all(json.as_bytes())
+                    .map_err(|e| format!("Failed to write custom models file: {e}"))?;
+                file.sync_all()
+                    .map_err(|e| format!("Failed to sync custom models file: {e}"))?;
+            }
+
+            std::fs::rename(&tmp_path, path)
+                .map_err(|e| format!("Failed to persist custom models atomically: {e}"))?;
+            Ok(())
+        })();
+
+        if write_result.is_err() {
+            let _ = std::fs::remove_file(&tmp_path);
+        }
+
+        write_result
     }
 }
 
@@ -3971,6 +4026,23 @@ fn builtin_models() -> Vec<ModelCatalogEntry> {
 mod tests {
     use super::*;
 
+    fn sample_custom_model(id: &str) -> ModelCatalogEntry {
+        ModelCatalogEntry {
+            id: id.to_string(),
+            display_name: format!("{id} Display"),
+            provider: "custom-provider".to_string(),
+            tier: ModelTier::Custom,
+            context_window: 65_536,
+            max_output_tokens: 8_192,
+            input_cost_per_m: 0.25,
+            output_cost_per_m: 0.5,
+            supports_tools: true,
+            supports_vision: false,
+            supports_streaming: true,
+            aliases: vec![format!("{id}-alias")],
+        }
+    }
+
     #[test]
     fn test_catalog_has_models() {
         let catalog = ModelCatalog::new();
@@ -4241,6 +4313,36 @@ mod tests {
         let catalog = ModelCatalog::new();
         let bedrock = catalog.models_by_provider("bedrock");
         assert_eq!(bedrock.len(), 8);
+    }
+
+    #[test]
+    fn test_save_custom_models_atomic_round_trip_and_parent_dir_creation() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "openfang-model-catalog-test-{}",
+            Uuid::new_v4()
+        ));
+        let path = temp_root.join("nested").join("custom-models.json");
+
+        let mut catalog = ModelCatalog::new();
+        assert!(catalog.add_custom_model(sample_custom_model("custom-alpha")));
+        assert!(catalog.add_custom_model(sample_custom_model("custom-beta")));
+
+        catalog.save_custom_models(&path).unwrap();
+
+        let saved = std::fs::read_to_string(&path).unwrap();
+        let entries: Vec<ModelCatalogEntry> = serde_json::from_str(&saved).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().any(|entry| entry.id == "custom-alpha"));
+        assert!(entries.iter().any(|entry| entry.id == "custom-beta"));
+
+        let tmp_prefix = ".custom-models.json.tmp-";
+        let leftover_tmp = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .flatten()
+            .any(|entry| entry.file_name().to_string_lossy().starts_with(tmp_prefix));
+        assert!(!leftover_tmp, "temporary custom model file should be cleaned up");
+
+        std::fs::remove_dir_all(&temp_root).unwrap();
     }
 
     #[test]
