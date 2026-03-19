@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use tracing::debug;
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 /// Maximum file size to read for context files (32KB).
@@ -246,8 +246,27 @@ impl WorkspaceState {
             .join(".openfang")
             .join("workspace-state.json");
         match std::fs::read_to_string(&path) {
-            Ok(json) => serde_json::from_str(&json).unwrap_or_default(),
-            Err(_) => Self::default(),
+            Ok(json) => match serde_json::from_str(&json) {
+                Ok(state) => state,
+                Err(error) => {
+                    warn!(
+                        path = %path.display(),
+                        %error,
+                        "Failed to parse workspace state; falling back to defaults"
+                    );
+                    Self::default()
+                }
+            },
+            Err(error) => {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    warn!(
+                        path = %path.display(),
+                        %error,
+                        "Failed to read workspace state; falling back to defaults"
+                    );
+                }
+                Self::default()
+            }
         }
     }
 
