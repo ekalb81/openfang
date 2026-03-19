@@ -140,8 +140,10 @@ impl WorkspaceContext {
             parts.push("- Git repository: yes".to_string());
         }
 
-        // Include context file summaries
-        let file_names: Vec<String> = self.cache.keys().cloned().collect();
+        // Include context file summaries in a stable order so prompt context
+        // doesn't vary across runs due to HashMap iteration.
+        let mut file_names: Vec<String> = self.cache.keys().cloned().collect();
+        file_names.sort();
         for name in file_names {
             if let Some(content) = self.get_file(&name) {
                 // Take first 200 chars as preview
@@ -395,6 +397,29 @@ mod tests {
         assert!(section.contains("Git repository: yes"));
         assert!(section.contains("SOUL.md"));
         assert!(section.contains("Be nice"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_build_context_section_sorts_context_files() {
+        let dir = std::env::temp_dir().join("openfang_ws_section_sort_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Cargo.toml"), "[package]").unwrap();
+        std::fs::write(dir.join("SOUL.md"), "Soul preview").unwrap();
+        std::fs::write(dir.join("AGENTS.md"), "Agents preview").unwrap();
+        std::fs::write(dir.join("TOOLS.md"), "Tools preview").unwrap();
+
+        let mut ctx = WorkspaceContext::detect(&dir);
+        let section = ctx.build_context_section();
+
+        let agents_pos = section.find("### AGENTS.md").unwrap();
+        let soul_pos = section.find("### SOUL.md").unwrap();
+        let tools_pos = section.find("### TOOLS.md").unwrap();
+
+        assert!(agents_pos < soul_pos);
+        assert!(soul_pos < tools_pos);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
