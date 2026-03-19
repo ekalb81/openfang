@@ -2924,10 +2924,12 @@ fn parse_legacy_channels(
                 });
             }
             "msteams" => {
-                let mut fields: Vec<(&str, toml::Value)> = vec![(
-                    "app_password_env",
-                    toml::Value::String("TEAMS_APP_PASSWORD".into()),
-                )];
+                let password_env = ch
+                    .app_token_env
+                    .clone()
+                    .unwrap_or_else(|| "TEAMS_APP_PASSWORD".to_string());
+                let mut fields: Vec<(&str, toml::Value)> =
+                    vec![("app_password_env", toml::Value::String(password_env))];
                 if let Some(ref da) = ch.default_agent {
                     fields.push(("default_agent", toml::Value::String(da.clone())));
                 }
@@ -5015,11 +5017,35 @@ mod tests {
         let table = channels.as_table().unwrap();
         let teams = table["teams"].as_table().unwrap();
 
+        assert_eq!(teams["app_password_env"].as_str().unwrap(), "TEAMS_TOKEN");
+        assert_eq!(teams["default_agent"].as_str().unwrap(), "planner");
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|item| item.kind == ItemKind::Channel && item.name == "teams")
+        );
+    }
+
+    #[test]
+    fn test_legacy_teams_defaults_password_env_when_legacy_env_is_missing() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(messaging_dir.join("msteams.yaml"), "type: msteams\n").unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let teams = table["teams"].as_table().unwrap();
+
         assert_eq!(
             teams["app_password_env"].as_str().unwrap(),
             "TEAMS_APP_PASSWORD"
         );
-        assert_eq!(teams["default_agent"].as_str().unwrap(), "planner");
         assert!(
             report
                 .imported
