@@ -450,6 +450,26 @@ struct OpenFangNetworkSection {
 // Secrets & policy helpers
 // ---------------------------------------------------------------------------
 
+fn secret_env_line_matches_key(line: &str, key: &str) -> bool {
+    line.split_once('=')
+        .map(|(existing_key, _)| existing_key == key)
+        .unwrap_or(false)
+}
+
+fn escape_secret_env_value(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len() + 2);
+    escaped.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped.push('"');
+    escaped
+}
+
 /// Write or update a key in a secrets.env file.
 /// File format: one `KEY=value` per line. Existing keys are overwritten.
 fn write_secret_env(path: &Path, key: &str, value: &str) -> Result<(), std::io::Error> {
@@ -462,13 +482,8 @@ fn write_secret_env(path: &Path, key: &str, value: &str) -> Result<(), std::io::
         Vec::new()
     };
 
-    // Upsert
-    let prefix = format!("{key}=");
-    if let Some(pos) = lines.iter().position(|l| l.starts_with(&prefix)) {
-        lines[pos] = format!("{key}={value}");
-    } else {
-        lines.push(format!("{key}={value}"));
-    }
+    lines.retain(|line| !secret_env_line_matches_key(line, key));
+    lines.push(format!("{key}={}", escape_secret_env_value(value)));
 
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -4553,6 +4568,33 @@ mod tests {
             .filter(|l| l.starts_with("DISCORD_BOT_TOKEN="))
             .count();
         assert_eq!(dc_count, 1, "Duplicate DISCORD_BOT_TOKEN in secrets.env");
+    }
+
+    #[test]
+    fn test_write_secret_env_quotes_special_values_and_updates_exact_key() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("secrets.env");
+        std::fs::write(&path, "TOKEN_SUFFIX=keep\nTOKEN=old\n").unwrap();
+
+        write_secret_env(&path, "TOKEN", "new value with \"quotes\" and \\slashes").unwrap();
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("TOKEN_SUFFIX=keep\n"));
+        assert!(written.contains("TOKEN=\"new value with \\\"quotes\\\" and \\\\slashes\"\n"));
+        assert!(!written.contains("TOKEN=old\n"));
+    }
+
+    #[test]
+    fn test_write_secret_env_appends_when_existing_line_has_same_prefix_only() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("secrets.env");
+        std::fs::write(&path, "TOKEN_SUFFIX=keep\n").unwrap();
+
+        write_secret_env(&path, "TOKEN", "value").unwrap();
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("TOKEN_SUFFIX=keep\n"));
+        assert!(written.contains("TOKEN=\"value\"\n"));
     }
 
     #[test]
