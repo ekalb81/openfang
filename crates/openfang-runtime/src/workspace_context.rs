@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use tracing::debug;
+use uuid::Uuid;
 
 /// Maximum file size to read for context files (32KB).
 const MAX_FILE_SIZE: u64 = 32_768;
@@ -258,7 +259,55 @@ impl WorkspaceState {
         let path = dir.join("workspace-state.json");
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| format!("Failed to serialize state: {e}"))?;
-        std::fs::write(&path, json).map_err(|e| format!("Failed to write state: {e}"))
+
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| "Failed to determine workspace state file name".to_string())?;
+        let tmp_path = path.with_file_name(format!(".{file_name}.tmp-{}", Uuid::new_v4()));
+
+        let write_result = (|| -> Result<(), String> {
+            #[cfg(unix)]
+            {
+                use std::fs::OpenOptions;
+                use std::io::Write;
+                use std::os::unix::fs::OpenOptionsExt;
+
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&tmp_path)
+                    .map_err(|e| format!("Failed to create temporary workspace state file: {e}"))?;
+                file.write_all(json.as_bytes())
+                    .map_err(|e| format!("Failed to write workspace state: {e}"))?;
+                file.sync_all()
+                    .map_err(|e| format!("Failed to sync workspace state: {e}"))?;
+            }
+
+            #[cfg(not(unix))]
+            {
+                use std::io::Write;
+
+                let mut file = std::fs::File::create(&tmp_path)
+                    .map_err(|e| format!("Failed to create temporary workspace state file: {e}"))?;
+                file.write_all(json.as_bytes())
+                    .map_err(|e| format!("Failed to write workspace state: {e}"))?;
+                file.sync_all()
+                    .map_err(|e| format!("Failed to sync workspace state: {e}"))?;
+            }
+
+            std::fs::rename(&tmp_path, &path)
+                .map_err(|e| format!("Failed to persist workspace state atomically: {e}"))?;
+            Ok(())
+        })();
+
+        if write_result.is_err() {
+            let _ = std::fs::remove_file(&tmp_path);
+        }
+
+        write_result
     }
 }
 
@@ -490,6 +539,37 @@ mod tests {
             Some("2026-01-01T00:00:00Z")
         );
         assert!(state.onboarding_completed_at.is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_workspace_state_save_writes_atomically_without_leaving_temp_files() {
+        let dir = std::env::temp_dir().join("openfang_ws_state_atomic_save");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let state = WorkspaceState {
+            version: 1,
+            bootstrap_seeded_at: Some("2026-01-01T00:00:00Z".to_string()),
+            onboarding_completed_at: Some("2026-01-02T00:00:00Z".to_string()),
+        };
+        state.save(&dir).unwrap();
+
+        let loaded = WorkspaceState::load(&dir);
+        assert_eq!(loaded.version, state.version);
+        assert_eq!(loaded.bootstrap_seeded_at, state.bootstrap_seeded_at);
+        assert_eq!(loaded.onboarding_completed_at, state.onboarding_completed_at);
+
+        let tmp_files: Vec<_> = std::fs::read_dir(dir.join(".openfang"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().contains(".tmp-"))
+            .collect();
+        assert!(
+            tmp_files.is_empty(),
+            "temporary workspace state files should be cleaned up"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
