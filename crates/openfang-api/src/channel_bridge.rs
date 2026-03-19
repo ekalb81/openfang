@@ -54,7 +54,8 @@ use openfang_channels::webhook::WebhookAdapter;
 use openfang_channels::wecom::WeComAdapter;
 use openfang_kernel::OpenFangKernel;
 use openfang_types::agent::AgentId;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 
@@ -1801,13 +1802,15 @@ fn unescape_quoted_value(value: &str, quote: char) -> String {
     unescaped
 }
 
-fn reload_env_file_for_channel_hot_reload(path: &std::path::Path) -> Result<usize, std::io::Error> {
+fn reload_env_file_for_channel_hot_reload(
+    path: &std::path::Path,
+) -> Result<HashMap<String, String>, std::io::Error> {
     if !path.exists() {
-        return Ok(0);
+        return Ok(HashMap::new());
     }
 
     let content = std::fs::read_to_string(path)?;
-    let mut loaded = 0;
+    let mut entries = HashMap::new();
 
     for line in content.lines() {
         let trimmed = line.trim();
@@ -1816,20 +1819,57 @@ fn reload_env_file_for_channel_hot_reload(path: &std::path::Path) -> Result<usiz
         }
 
         if let Some((key, value)) = parse_env_line(trimmed) {
-            // Always overwrite — the file is the source of truth during hot reload.
-            std::env::set_var(key, value);
-            loaded += 1;
+            entries.insert(key, value);
         }
     }
 
-    Ok(loaded)
+    Ok(entries)
+}
+
+fn hot_reload_env_snapshots() -> &'static Mutex<HashMap<String, Option<String>>> {
+    static SNAPSHOTS: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
+    SNAPSHOTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn apply_channel_hot_reload_env(entries: HashMap<String, String>) {
+    let snapshots = hot_reload_env_snapshots();
+    let mut snapshots = snapshots
+        .lock()
+        .expect("channel hot reload env mutex poisoned");
+
+    for key in snapshots
+        .keys()
+        .filter(|key| !entries.contains_key(*key))
+        .cloned()
+        .collect::<Vec<_>>()
+    {
+        match snapshots.remove(&key).flatten() {
+            Some(previous) => std::env::set_var(&key, previous),
+            None => std::env::remove_var(&key),
+        }
+    }
+
+    for (key, value) in entries {
+        snapshots
+            .entry(key.clone())
+            .or_insert_with(|| std::env::var(&key).ok());
+        // Always overwrite — the reloaded files are the source of truth during hot reload.
+        std::env::set_var(key, value);
+    }
 }
 
 fn reload_channel_env_from_disk(home_dir: &std::path::Path) {
+    let mut merged_entries = HashMap::new();
+
     let secrets_path = home_dir.join("secrets.env");
     match reload_env_file_for_channel_hot_reload(&secrets_path) {
-        Ok(loaded) if loaded > 0 => {
-            info!(path = %secrets_path.display(), loaded, "Reloaded channel env file for hot-reload")
+        Ok(entries) if !entries.is_empty() => {
+            info!(
+                path = %secrets_path.display(),
+                loaded = entries.len(),
+                "Reloaded channel env file for hot-reload"
+            );
+            merged_entries.extend(entries);
         }
         Ok(_) => {}
         Err(err) => {
@@ -1839,14 +1879,21 @@ fn reload_channel_env_from_disk(home_dir: &std::path::Path) {
 
     let dotenv_path = home_dir.join(".env");
     match reload_env_file_for_channel_hot_reload(&dotenv_path) {
-        Ok(loaded) if loaded > 0 => {
-            info!(path = %dotenv_path.display(), loaded, "Reloaded channel env file for hot-reload")
+        Ok(entries) if !entries.is_empty() => {
+            info!(
+                path = %dotenv_path.display(),
+                loaded = entries.len(),
+                "Reloaded channel env file for hot-reload"
+            );
+            merged_entries.extend(entries);
         }
         Ok(_) => {}
         Err(err) => {
             warn!(path = %dotenv_path.display(), error = %err, "Failed to reload channel env file for hot-reload")
         }
     }
+
+    apply_channel_hot_reload_env(merged_entries);
 }
 
 /// Reload channels from disk config — stops old bridge, starts new one.
@@ -1951,6 +1998,43 @@ mod tests {
         std::env::remove_var(shared_key);
         std::env::remove_var(secret_only);
         std::env::remove_var(phone);
+    }
+
+    #[test]
+    fn reload_channel_env_from_disk_restores_removed_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let inherited_key = "OPENFANG_TEST_CHANNEL_RELOAD_RESTORE_INHERITED";
+        let file_only_key = "OPENFANG_TEST_CHANNEL_RELOAD_RESTORE_FILE_ONLY";
+
+        std::env::set_var(inherited_key, "from_parent_env");
+        std::env::remove_var(file_only_key);
+
+        std::fs::write(
+            dir.path().join("secrets.env"),
+            format!("{file_only_key}=secret-token\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join(".env"),
+            format!("{inherited_key}=from_dotenv\n"),
+        )
+        .unwrap();
+
+        reload_channel_env_from_disk(dir.path());
+
+        assert_eq!(std::env::var(inherited_key).unwrap(), "from_dotenv");
+        assert_eq!(std::env::var(file_only_key).unwrap(), "secret-token");
+
+        std::fs::write(dir.path().join("secrets.env"), "").unwrap();
+        std::fs::write(dir.path().join(".env"), "").unwrap();
+
+        reload_channel_env_from_disk(dir.path());
+
+        assert_eq!(std::env::var(inherited_key).unwrap(), "from_parent_env");
+        assert!(std::env::var(file_only_key).is_err());
+
+        std::env::remove_var(inherited_key);
+        std::env::remove_var(file_only_key);
     }
 
     #[tokio::test]
