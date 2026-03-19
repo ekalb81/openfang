@@ -4874,6 +4874,91 @@ mod tests {
     }
 
     #[test]
+    fn test_legacy_telegram_default_agent_is_preserved() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(
+            messaging_dir.join("telegram.yaml"),
+            "type: telegram\nbot_token_env: TELEGRAM_TOKEN\ndefault_agent: dispatcher\n",
+        )
+        .unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let telegram = table["telegram"].as_table().unwrap();
+
+        assert_eq!(
+            telegram["bot_token_env"].as_str().unwrap(),
+            "TELEGRAM_TOKEN"
+        );
+        assert_eq!(telegram["default_agent"].as_str().unwrap(), "dispatcher");
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "telegram"));
+    }
+
+    #[test]
+    fn test_legacy_discord_default_agent_is_preserved() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(
+            messaging_dir.join("discord.yaml"),
+            "type: discord\nbot_token_env: DISCORD_TOKEN\ndefault_agent: triage\n",
+        )
+        .unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let discord = table["discord"].as_table().unwrap();
+
+        assert_eq!(discord["bot_token_env"].as_str().unwrap(), "DISCORD_TOKEN");
+        assert_eq!(discord["default_agent"].as_str().unwrap(), "triage");
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "discord"));
+    }
+
+    #[test]
+    fn test_legacy_slack_default_agent_is_preserved() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(
+            messaging_dir.join("slack.yaml"),
+            "type: slack\nbot_token_env: SLACK_BOT\napp_token_env: SLACK_APP\ndefault_agent: coordinator\n",
+        )
+        .unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let slack = table["slack"].as_table().unwrap();
+
+        assert_eq!(slack["bot_token_env"].as_str().unwrap(), "SLACK_BOT");
+        assert_eq!(slack["app_token_env"].as_str().unwrap(), "SLACK_APP");
+        assert_eq!(slack["default_agent"].as_str().unwrap(), "coordinator");
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "slack"));
+    }
+
+    #[test]
     fn test_legacy_google_chat_default_agent_is_preserved() {
         let source = TempDir::new().unwrap();
         let target = TempDir::new().unwrap();
