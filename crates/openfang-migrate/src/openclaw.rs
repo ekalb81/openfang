@@ -2860,8 +2860,11 @@ fn parse_legacy_channels(
                 let token_env = ch
                     .bot_token_env
                     .unwrap_or_else(|| "MATTERMOST_TOKEN".to_string());
-                let fields: Vec<(&str, toml::Value)> =
+                let mut fields: Vec<(&str, toml::Value)> =
                     vec![("bot_token_env", toml::Value::String(token_env))];
+                if let Some(ref da) = ch.default_agent {
+                    fields.push(("default_agent", toml::Value::String(da.clone())));
+                }
                 channels_table.insert(
                     "mattermost".to_string(),
                     build_channel_table(fields, None, None, None),
@@ -4918,6 +4921,35 @@ mod tests {
                 .imported
                 .iter()
                 .any(|item| item.kind == ItemKind::Channel && item.name == "matrix")
+        );
+    }
+
+    #[test]
+    fn test_legacy_mattermost_default_agent_is_preserved() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(
+            messaging_dir.join("mattermost.yaml"),
+            "type: mattermost\nbot_token_env: MM_TOKEN\ndefault_agent: ops\n",
+        )
+        .unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let mattermost = table["mattermost"].as_table().unwrap();
+
+        assert_eq!(mattermost["bot_token_env"].as_str().unwrap(), "MM_TOKEN");
+        assert_eq!(mattermost["default_agent"].as_str().unwrap(), "ops");
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|item| item.kind == ItemKind::Channel && item.name == "mattermost")
         );
     }
 }
