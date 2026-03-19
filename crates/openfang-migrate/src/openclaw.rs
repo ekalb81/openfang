@@ -2849,6 +2849,9 @@ fn parse_legacy_channels(
                 if let Some(ref tok) = ch.bot_token_env {
                     fields.push(("password_env", toml::Value::String(tok.clone())));
                 }
+                if let Some(ref da) = ch.default_agent {
+                    fields.push(("default_agent", toml::Value::String(da.clone())));
+                }
                 channels_table.insert(
                     "irc".to_string(),
                     build_channel_table(fields, None, None, None),
@@ -5017,6 +5020,35 @@ mod tests {
                 .imported
                 .iter()
                 .any(|item| item.kind == ItemKind::Channel && item.name == "signal")
+        );
+    }
+
+    #[test]
+    fn test_legacy_irc_default_agent_is_preserved() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(
+            messaging_dir.join("irc.yaml"),
+            "type: irc\nbot_token_env: IRC_PASSWORD\ndefault_agent: helper\n",
+        )
+        .unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let irc = table["irc"].as_table().unwrap();
+
+        assert_eq!(irc["password_env"].as_str().unwrap(), "IRC_PASSWORD");
+        assert_eq!(irc["default_agent"].as_str().unwrap(), "helper");
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|item| item.kind == ItemKind::Channel && item.name == "irc")
         );
     }
 }
