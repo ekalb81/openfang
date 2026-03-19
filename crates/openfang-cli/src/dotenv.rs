@@ -167,6 +167,20 @@ fn unescape_quoted_value(value: &str, quote_char: char) -> String {
     result
 }
 
+fn escape_quoted_value_for_write(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            _ => escaped.push(ch),
+        }
+    }
+
+    escaped
+}
+
 /// Read all key-value pairs from the .env file.
 fn read_env_file(path: &PathBuf) -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
@@ -198,7 +212,10 @@ fn write_env_file(path: &PathBuf, entries: &BTreeMap<String, String>) -> Result<
     for (key, value) in entries {
         // Quote values that contain spaces or special characters
         if value.contains(' ') || value.contains('#') || value.contains('"') {
-            content.push_str(&format!("{key}=\"{}\"\n", value.replace('"', "\\\"")));
+            content.push_str(&format!(
+                "{key}=\"{}\"\n",
+                escape_quoted_value_for_write(value)
+            ));
         } else {
             content.push_str(&format!("{key}={value}\n"));
         }
@@ -293,5 +310,35 @@ mod tests {
     #[test]
     fn test_parse_env_line_empty_key() {
         assert!(parse_env_line("=value").is_none());
+    }
+
+    #[test]
+    fn test_write_env_file_round_trips_backslashes_and_quotes() {
+        let dir = std::env::temp_dir().join(format!(
+            "openfang-dotenv-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(".env");
+        let mut entries = BTreeMap::new();
+        entries.insert(
+            "WINDOWS_PATH".to_string(),
+            "C:\\temp\\\"quoted\"\\file.txt".to_string(),
+        );
+
+        write_env_file(&path, &entries).unwrap();
+        let parsed = read_env_file(&path);
+
+        assert_eq!(
+            parsed.get("WINDOWS_PATH").unwrap(),
+            "C:\\temp\\\"quoted\"\\file.txt"
+        );
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
     }
 }
