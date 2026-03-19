@@ -397,6 +397,8 @@ struct LegacyYamlChannelConfig {
     channel_type: String,
     bot_token_env: Option<String>,
     app_token_env: Option<String>,
+    app_secret_env: Option<String>,
+    service_account_env: Option<String>,
     #[allow(dead_code)]
     phone_number_id_env: Option<String>,
     #[allow(dead_code)]
@@ -2073,7 +2075,11 @@ fn convert_agent_from_json(
 
     let api_key_env = {
         let env = default_api_key_env(&provider);
-        if env.is_empty() { None } else { Some(env) }
+        if env.is_empty() {
+            None
+        } else {
+            Some(env)
+        }
     };
 
     // System prompt from identity
@@ -2888,10 +2894,12 @@ fn parse_legacy_channels(
                 });
             }
             "feishu" => {
-                let mut fields: Vec<(&str, toml::Value)> = vec![(
-                    "app_secret_env",
-                    toml::Value::String("FEISHU_APP_SECRET".into()),
-                )];
+                let secret_env = ch
+                    .app_secret_env
+                    .clone()
+                    .unwrap_or_else(|| "FEISHU_APP_SECRET".to_string());
+                let mut fields: Vec<(&str, toml::Value)> =
+                    vec![("app_secret_env", toml::Value::String(secret_env))];
                 if let Some(ref da) = ch.default_agent {
                     fields.push(("default_agent", toml::Value::String(da.clone())));
                 }
@@ -2906,9 +2914,13 @@ fn parse_legacy_channels(
                 });
             }
             "googlechat" => {
+                let service_account_env = ch
+                    .service_account_env
+                    .clone()
+                    .unwrap_or_else(|| "GOOGLE_CHAT_SERVICE_ACCOUNT".to_string());
                 let mut fields: Vec<(&str, toml::Value)> = vec![(
                     "service_account_env",
-                    toml::Value::String("GOOGLE_CHAT_SERVICE_ACCOUNT".into()),
+                    toml::Value::String(service_account_env),
                 )];
                 if let Some(ref da) = ch.default_agent {
                     fields.push(("default_agent", toml::Value::String(da.clone())));
@@ -3092,7 +3104,11 @@ fn convert_legacy_agent(
 
     let api_key_env = oc.api_key_env.or_else(|| {
         let env = default_api_key_env(&provider);
-        if env.is_empty() { None } else { Some(env) }
+        if env.is_empty() {
+            None
+        } else {
+            Some(env)
+        }
     });
 
     let mut toml_str = String::new();
@@ -3641,35 +3657,27 @@ mod tests {
 
         // Memory imported
         assert!(report.imported.iter().any(|i| i.kind == ItemKind::Memory));
-        assert!(
-            target
-                .path()
-                .join("agents/coder/imported_memory.md")
-                .exists()
-        );
-        assert!(
-            target
-                .path()
-                .join("agents/researcher/imported_memory.md")
-                .exists()
-        );
+        assert!(target
+            .path()
+            .join("agents/coder/imported_memory.md")
+            .exists());
+        assert!(target
+            .path()
+            .join("agents/researcher/imported_memory.md")
+            .exists());
 
         // Sessions imported
-        assert!(
-            report
-                .imported
-                .iter()
-                .any(|i| i.kind == ItemKind::Session && i.name.contains("session"))
-        );
+        assert!(report
+            .imported
+            .iter()
+            .any(|i| i.kind == ItemKind::Session && i.name.contains("session")));
         assert!(target.path().join("imported_sessions/main.jsonl").exists());
 
         // Workspace imported
-        assert!(
-            report
-                .imported
-                .iter()
-                .any(|i| i.kind == ItemKind::Session && i.name.contains("workspace"))
-        );
+        assert!(report
+            .imported
+            .iter()
+            .any(|i| i.kind == ItemKind::Session && i.name.contains("workspace")));
 
         // Skipped features reported
         assert!(report.skipped.iter().any(|s| s.name == "cron"));
@@ -3956,18 +3964,14 @@ mod tests {
             .collect();
         assert_eq!(memory_items.len(), 2);
 
-        assert!(
-            target
-                .path()
-                .join("agents/agent1/imported_memory.md")
-                .exists()
-        );
-        assert!(
-            target
-                .path()
-                .join("agents/agent2/imported_memory.md")
-                .exists()
-        );
+        assert!(target
+            .path()
+            .join("agents/agent1/imported_memory.md")
+            .exists());
+        assert!(target
+            .path()
+            .join("agents/agent2/imported_memory.md")
+            .exists());
 
         let c1 = std::fs::read_to_string(target.path().join("agents/agent1/imported_memory.md"))
             .unwrap();
@@ -4019,18 +4023,14 @@ mod tests {
         assert!(report.skipped.iter().any(|s| s.name == "auth-profiles"));
         assert!(report.skipped.iter().any(|s| s.name.contains("skill")));
         assert!(report.skipped.iter().any(|s| s.name == "cron-store.json"));
-        assert!(
-            report
-                .skipped
-                .iter()
-                .any(|s| s.name.contains("memory-search"))
-        );
-        assert!(
-            report
-                .skipped
-                .iter()
-                .any(|s| s.name == "auth-profiles.json")
-        );
+        assert!(report
+            .skipped
+            .iter()
+            .any(|s| s.name.contains("memory-search")));
+        assert!(report
+            .skipped
+            .iter()
+            .any(|s| s.name == "auth-profiles.json"));
         assert!(report.skipped.iter().any(|s| s.name == "session"));
         assert!(report.skipped.iter().any(|s| s.name == "memory"));
     }
@@ -4292,12 +4292,10 @@ mod tests {
 
         assert!(target.path().join("config.toml").exists());
         assert!(target.path().join("agents/coder/agent.toml").exists());
-        assert!(
-            target
-                .path()
-                .join("agents/coder/imported_memory.md")
-                .exists()
-        );
+        assert!(target
+            .path()
+            .join("agents/coder/imported_memory.md")
+            .exists());
 
         let agent_toml =
             std::fs::read_to_string(target.path().join("agents/coder/agent.toml")).unwrap();
@@ -4797,12 +4795,10 @@ mod tests {
             "expected Google Chat service account env entry, got: {secrets}"
         );
         assert!(secrets.contains("\\\"project_id\\\":\\\"demo-project\\\""));
-        assert!(
-            report
-                .imported
-                .iter()
-                .any(|i| i.kind == ItemKind::Secret && i.name == "GOOGLE_CHAT_SERVICE_ACCOUNT")
-        );
+        assert!(report
+            .imported
+            .iter()
+            .any(|i| i.kind == ItemKind::Secret && i.name == "GOOGLE_CHAT_SERVICE_ACCOUNT"));
     }
 
     #[test]
@@ -4844,12 +4840,10 @@ mod tests {
             !target.path().join("secrets.env").exists(),
             "missing service account file should not create secrets.env"
         );
-        assert!(
-            !report
-                .imported
-                .iter()
-                .any(|i| i.kind == ItemKind::Secret && i.name == "GOOGLE_CHAT_SERVICE_ACCOUNT")
-        );
+        assert!(!report
+            .imported
+            .iter()
+            .any(|i| i.kind == ItemKind::Secret && i.name == "GOOGLE_CHAT_SERVICE_ACCOUNT"));
     }
 
     #[test]
@@ -4903,12 +4897,39 @@ mod tests {
             "GOOGLE_CHAT_SERVICE_ACCOUNT"
         );
         assert_eq!(google_chat["default_agent"].as_str().unwrap(), "researcher");
-        assert!(
-            report
-                .imported
-                .iter()
-                .any(|item| { item.kind == ItemKind::Channel && item.name == "google_chat" })
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| { item.kind == ItemKind::Channel && item.name == "google_chat" }));
+    }
+
+    #[test]
+    fn test_legacy_google_chat_preserves_custom_service_account_env() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(
+            messaging_dir.join("googlechat.yaml"),
+            "type: googlechat\nservice_account_env: GC_CHAT_SA\n",
+        )
+        .unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let google_chat = table["google_chat"].as_table().unwrap();
+
+        assert_eq!(
+            google_chat["service_account_env"].as_str().unwrap(),
+            "GC_CHAT_SA"
         );
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "google_chat"));
     }
 
     #[test]
@@ -4932,12 +4953,10 @@ mod tests {
 
         assert_eq!(whatsapp["access_token_env"].as_str().unwrap(), "WA_TOKEN");
         assert_eq!(whatsapp["default_agent"].as_str().unwrap(), "responder");
-        assert!(
-            report
-                .imported
-                .iter()
-                .any(|item| item.kind == ItemKind::Channel && item.name == "whatsapp")
-        );
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "whatsapp"));
     }
 
     #[test]
@@ -4961,12 +4980,10 @@ mod tests {
 
         assert_eq!(matrix["access_token_env"].as_str().unwrap(), "MATRIX_TOKEN");
         assert_eq!(matrix["default_agent"].as_str().unwrap(), "triage");
-        assert!(
-            report
-                .imported
-                .iter()
-                .any(|item| item.kind == ItemKind::Channel && item.name == "matrix")
-        );
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "matrix"));
     }
 
     #[test]
@@ -4990,12 +5007,10 @@ mod tests {
 
         assert_eq!(mattermost["bot_token_env"].as_str().unwrap(), "MM_TOKEN");
         assert_eq!(mattermost["default_agent"].as_str().unwrap(), "ops");
-        assert!(
-            report
-                .imported
-                .iter()
-                .any(|item| item.kind == ItemKind::Channel && item.name == "mattermost")
-        );
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "mattermost"));
     }
 
     #[test]
@@ -5019,12 +5034,10 @@ mod tests {
 
         assert_eq!(teams["app_password_env"].as_str().unwrap(), "TEAMS_TOKEN");
         assert_eq!(teams["default_agent"].as_str().unwrap(), "planner");
-        assert!(
-            report
-                .imported
-                .iter()
-                .any(|item| item.kind == ItemKind::Channel && item.name == "teams")
-        );
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "teams"));
     }
 
     #[test]
@@ -5046,12 +5059,39 @@ mod tests {
             teams["app_password_env"].as_str().unwrap(),
             "TEAMS_APP_PASSWORD"
         );
-        assert!(
-            report
-                .imported
-                .iter()
-                .any(|item| item.kind == ItemKind::Channel && item.name == "teams")
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "teams"));
+    }
+
+    #[test]
+    fn test_legacy_feishu_preserves_custom_app_secret_env() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(
+            messaging_dir.join("feishu.yaml"),
+            "type: feishu\napp_secret_env: FEISHU_CUSTOM_SECRET\n",
+        )
+        .unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let feishu = table["feishu"].as_table().unwrap();
+
+        assert_eq!(
+            feishu["app_secret_env"].as_str().unwrap(),
+            "FEISHU_CUSTOM_SECRET"
         );
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "feishu"));
     }
 
     #[test]
@@ -5075,12 +5115,10 @@ mod tests {
 
         assert_eq!(signal["api_url"].as_str().unwrap(), "http://localhost:8080");
         assert_eq!(signal["default_agent"].as_str().unwrap(), "responder");
-        assert!(
-            report
-                .imported
-                .iter()
-                .any(|item| item.kind == ItemKind::Channel && item.name == "signal")
-        );
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "signal"));
     }
 
     #[test]
@@ -5104,12 +5142,10 @@ mod tests {
 
         assert_eq!(irc["password_env"].as_str().unwrap(), "IRC_PASSWORD");
         assert_eq!(irc["default_agent"].as_str().unwrap(), "helper");
-        assert!(
-            report
-                .imported
-                .iter()
-                .any(|item| item.kind == ItemKind::Channel && item.name == "irc")
-        );
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "irc"));
     }
 
     #[test]
@@ -5136,11 +5172,9 @@ mod tests {
             "FEISHU_APP_SECRET"
         );
         assert_eq!(feishu["default_agent"].as_str().unwrap(), "concierge");
-        assert!(
-            report
-                .imported
-                .iter()
-                .any(|item| item.kind == ItemKind::Channel && item.name == "feishu")
-        );
+        assert!(report
+            .imported
+            .iter()
+            .any(|item| item.kind == ItemKind::Channel && item.name == "feishu"));
     }
 }
