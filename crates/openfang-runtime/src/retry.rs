@@ -152,9 +152,10 @@ where
             }
             Err(err) => {
                 let is_last = attempt + 1 >= max;
+                let retryable = should_retry(&err);
 
-                if is_last || !should_retry(&err) {
-                    if !should_retry(&err) {
+                if is_last || !retryable {
+                    if !retryable {
                         debug!(
                             attempt = attempt + 1,
                             "error is not retryable, giving up: {:?}", err
@@ -248,8 +249,8 @@ pub fn channel_retry_config() -> RetryConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     #[test]
     fn test_retry_config_defaults() {
@@ -344,11 +345,7 @@ mod tests {
                 let c = counter_clone.clone();
                 async move {
                     let n = c.fetch_add(1, Ordering::SeqCst);
-                    if n < 2 {
-                        Err("not yet")
-                    } else {
-                        Ok("finally")
-                    }
+                    if n < 2 { Err("not yet") } else { Ok("finally") }
                 }
             },
             |_| true,
@@ -435,6 +432,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_retry_checks_retryability_once_per_error() {
+        let config = RetryConfig {
+            max_attempts: 4,
+            min_delay_ms: 1,
+            max_delay_ms: 10,
+            jitter: 0.0,
+        };
+
+        let operation_calls = Arc::new(AtomicU32::new(0));
+        let operation_calls_clone = operation_calls.clone();
+        let retryable_checks = Arc::new(AtomicU32::new(0));
+        let retryable_checks_clone = retryable_checks.clone();
+
+        let outcome = retry_async(
+            &config,
+            move || {
+                let calls = operation_calls_clone.clone();
+                async move {
+                    let attempt = calls.fetch_add(1, Ordering::SeqCst);
+                    if attempt < 2 {
+                        Err::<(), &str>("transient")
+                    } else {
+                        Ok(())
+                    }
+                }
+            },
+            move |_| {
+                retryable_checks_clone.fetch_add(1, Ordering::SeqCst);
+                true
+            },
+            |_: &&str| None,
+        )
+        .await;
+
+        match outcome {
+            RetryOutcome::Success { attempts, .. } => {
+                assert_eq!(attempts, 3);
+            }
+            _ => panic!("expected success"),
+        }
+
+        assert_eq!(operation_calls.load(Ordering::SeqCst), 3);
+        assert_eq!(retryable_checks.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
     async fn test_retry_with_hint_delay() {
         let config = RetryConfig {
             max_attempts: 3,
@@ -454,11 +497,7 @@ mod tests {
                 let c = counter_clone.clone();
                 async move {
                     let n = c.fetch_add(1, Ordering::SeqCst);
-                    if n < 1 {
-                        Err("transient")
-                    } else {
-                        Ok("ok")
-                    }
+                    if n < 1 { Err("transient") } else { Ok("ok") }
                 }
             },
             |_| true,
