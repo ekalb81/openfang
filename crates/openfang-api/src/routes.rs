@@ -7783,6 +7783,26 @@ pub async fn create_skill(
 
 // ── Helper functions for secrets.env management ────────────────────────
 
+fn secret_env_line_matches_key(line: &str, key: &str) -> bool {
+    line.split_once('=')
+        .map(|(existing_key, _)| existing_key == key)
+        .unwrap_or(false)
+}
+
+fn escape_secret_env_value(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len() + 2);
+    escaped.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped.push('"');
+    escaped
+}
+
 /// Write or update a key in the secrets.env file.
 /// File format: one `KEY=value` per line. Existing keys are overwritten.
 fn write_secret_env(path: &std::path::Path, key: &str, value: &str) -> Result<(), std::io::Error> {
@@ -7795,11 +7815,11 @@ fn write_secret_env(path: &std::path::Path, key: &str, value: &str) -> Result<()
         Vec::new()
     };
 
-    // Remove existing line for this key
-    lines.retain(|l| !l.starts_with(&format!("{key}=")));
+    // Remove existing line for this key.
+    lines.retain(|l| !secret_env_line_matches_key(l, key));
 
-    // Add new line
-    lines.push(format!("{key}={value}"));
+    // Add new line with escaping so values round-trip safely.
+    lines.push(format!("{key}={}", escape_secret_env_value(value)));
 
     // Ensure parent directory exists
     if let Some(parent) = path.parent() {
@@ -7826,7 +7846,7 @@ fn remove_secret_env(path: &std::path::Path, key: &str) -> Result<(), std::io::E
 
     let lines: Vec<String> = std::fs::read_to_string(path)?
         .lines()
-        .filter(|l| !l.starts_with(&format!("{key}=")))
+        .filter(|l| !secret_env_line_matches_key(l, key))
         .map(|l| l.to_string())
         .collect();
 
@@ -11566,6 +11586,7 @@ fn remove_toml_section(content: &str, section: &str) -> String {
 #[cfg(test)]
 mod channel_config_tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn test_is_channel_configured_wecom_none() {
@@ -11610,5 +11631,32 @@ mod channel_config_tests {
                 .unwrap()
                 .required
         );
+    }
+
+    #[test]
+    fn test_write_secret_env_quotes_special_values_and_updates_exact_key() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("secrets.env");
+
+        std::fs::write(&path, "TOKEN_SUFFIX=keep\nTOKEN=old\n").unwrap();
+        write_secret_env(&path, "TOKEN", "new value with \"quotes\" and \\slashes").unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("TOKEN_SUFFIX=keep\n"));
+        assert!(contents.contains("TOKEN=\"new value with \\\"quotes\\\" and \\\\slashes\"\n"));
+        assert!(!contents.contains("TOKEN=old\n"));
+    }
+
+    #[test]
+    fn test_remove_secret_env_only_removes_exact_key() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("secrets.env");
+
+        std::fs::write(&path, "TOKEN=value\nTOKEN_SUFFIX=keep\n").unwrap();
+        remove_secret_env(&path, "TOKEN").unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(!contents.contains("TOKEN=value"));
+        assert!(contents.contains("TOKEN_SUFFIX=keep"));
     }
 }
