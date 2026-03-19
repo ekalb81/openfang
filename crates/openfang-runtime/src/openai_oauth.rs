@@ -129,15 +129,55 @@ pub fn save_credentials(path: &Path, creds: &OpenAIOAuthCredentials) -> Result<(
 
     let json = serde_json::to_string_pretty(creds)
         .map_err(|e| format!("Failed to serialize OAuth credentials: {e}"))?;
-    std::fs::write(path, json).map_err(|e| format!("Failed to write OAuth credentials: {e}"))?;
 
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| "Failed to determine OAuth credential file name".to_string())?;
+    let tmp_path = path.with_file_name(format!(".{file_name}.tmp-{}", Uuid::new_v4()));
+
+    let write_result = (|| -> Result<(), String> {
+        #[cfg(unix)]
+        {
+            use std::fs::OpenOptions;
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&tmp_path)
+                .map_err(|e| format!("Failed to create temporary OAuth credentials file: {e}"))?;
+            file.write_all(json.as_bytes())
+                .map_err(|e| format!("Failed to write OAuth credentials: {e}"))?;
+            file.sync_all()
+                .map_err(|e| format!("Failed to sync OAuth credentials: {e}"))?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            use std::io::Write;
+
+            let mut file = std::fs::File::create(&tmp_path)
+                .map_err(|e| format!("Failed to create temporary OAuth credentials file: {e}"))?;
+            file.write_all(json.as_bytes())
+                .map_err(|e| format!("Failed to write OAuth credentials: {e}"))?;
+            file.sync_all()
+                .map_err(|e| format!("Failed to sync OAuth credentials: {e}"))?;
+        }
+
+        std::fs::rename(&tmp_path, path)
+            .map_err(|e| format!("Failed to persist OAuth credentials atomically: {e}"))?;
+        Ok(())
+    })();
+
+    if write_result.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
     }
 
-    Ok(())
+    write_result
 }
 
 pub fn remove_credentials(path: &Path) -> Result<(), String> {
@@ -392,7 +432,8 @@ fn extract_jwt_claim(jwt: &str, key: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_REDIRECT_URI, default_mode, default_provider, generate_pkce_start, load_credentials,
+        DEFAULT_REDIRECT_URI, OpenAIOAuthCredentials, default_mode, default_provider,
+        generate_pkce_start, load_credentials, save_credentials,
     };
     use tempfile::tempdir;
 
@@ -441,5 +482,38 @@ mod tests {
         assert_eq!(creds.expires, 1234567890);
         assert_eq!(creds.account_id, None);
         assert_eq!(creds.email, None);
+    }
+
+    #[test]
+    fn save_credentials_writes_atomically_without_leaving_temp_files() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("openai-oauth.json");
+        let creds = OpenAIOAuthCredentials {
+            provider: "openai".to_string(),
+            mode: "oauth".to_string(),
+            access: "access-token".to_string(),
+            refresh: "refresh-token".to_string(),
+            expires: 1234567890,
+            account_id: Some("acct_123".to_string()),
+            email: Some("user@example.com".to_string()),
+        };
+
+        save_credentials(&path, &creds).expect("credentials should save");
+
+        let loaded = load_credentials(&path).expect("saved credentials should load");
+        assert_eq!(loaded.provider, creds.provider);
+        assert_eq!(loaded.mode, creds.mode);
+        assert_eq!(loaded.access, creds.access);
+        assert_eq!(loaded.refresh, creds.refresh);
+        assert_eq!(loaded.expires, creds.expires);
+        assert_eq!(loaded.account_id, creds.account_id);
+        assert_eq!(loaded.email, creds.email);
+
+        let tmp_files: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().contains(".tmp-"))
+            .collect();
+        assert!(tmp_files.is_empty(), "temporary OAuth files should be cleaned up");
     }
 }
