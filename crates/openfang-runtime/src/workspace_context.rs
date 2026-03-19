@@ -213,7 +213,7 @@ fn has_extension_in_dir(dir: &Path, ext: &str) -> bool {
 }
 
 /// Persistent workspace state, saved to `.openfang/workspace-state.json`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceState {
     /// State format version.
     #[serde(default = "default_version")]
@@ -226,6 +226,16 @@ pub struct WorkspaceState {
 
 fn default_version() -> u32 {
     1
+}
+
+impl Default for WorkspaceState {
+    fn default() -> Self {
+        Self {
+            version: default_version(),
+            bootstrap_seeded_at: None,
+            onboarding_completed_at: None,
+        }
+    }
 }
 
 impl WorkspaceState {
@@ -455,8 +465,31 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
 
         let state = WorkspaceState::load(&dir);
-        assert_eq!(state.version, 0); // default
+        assert_eq!(state.version, 1);
         assert!(state.bootstrap_seeded_at.is_none());
+        assert!(state.onboarding_completed_at.is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_workspace_state_missing_version_defaults_to_current_format() {
+        let dir = std::env::temp_dir().join("openfang_ws_state_missing_version");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".openfang")).unwrap();
+        std::fs::write(
+            dir.join(".openfang").join("workspace-state.json"),
+            r#"{"bootstrap_seeded_at":"2026-01-01T00:00:00Z"}"#,
+        )
+        .unwrap();
+
+        let state = WorkspaceState::load(&dir);
+        assert_eq!(state.version, 1);
+        assert_eq!(
+            state.bootstrap_seeded_at.as_deref(),
+            Some("2026-01-01T00:00:00Z")
+        );
+        assert!(state.onboarding_completed_at.is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
