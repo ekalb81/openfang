@@ -3722,6 +3722,7 @@ mod tests {
         assert!(secrets.contains("TELEGRAM_BOT_TOKEN=\"123\""));
         assert!(secrets.contains("DISCORD_BOT_TOKEN=\"abc\""));
         assert!(secrets.contains("SLACK_BOT_TOKEN=\"xoxb\""));
+        assert!(secrets.contains("SLACK_APP_TOKEN=\"xapp\""));
     }
 
     #[test]
