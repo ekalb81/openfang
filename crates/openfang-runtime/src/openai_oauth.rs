@@ -8,6 +8,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use tracing::warn;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -163,7 +164,11 @@ pub fn ensure_access_token_sync(path: &Path) -> Option<String> {
     let client_id = std::env::var("OPENAI_OAUTH_CLIENT_ID")
         .ok()
         .filter(|s| !s.trim().is_empty())
-        .or_else(|| std::env::var("OPENAI_CLIENT_ID").ok().filter(|s| !s.trim().is_empty()))?;
+        .or_else(|| {
+            std::env::var("OPENAI_CLIENT_ID")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        })?;
 
     let path_buf = path.to_path_buf();
     let join = std::thread::spawn(move || {
@@ -187,7 +192,19 @@ pub fn generate_pkce_start(client_id: &str, redirect_uri: Option<&str>) -> OpenA
     let verifier = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     let challenge = base64url_no_pad(Sha256::digest(verifier.as_bytes()).as_slice());
     let state = Uuid::new_v4().to_string();
-    let redirect_uri = redirect_uri.unwrap_or(DEFAULT_REDIRECT_URI).to_string();
+    let requested_redirect_uri = redirect_uri.unwrap_or(DEFAULT_REDIRECT_URI).trim();
+    let redirect_uri = match reqwest::Url::parse(requested_redirect_uri) {
+        Ok(_) => requested_redirect_uri.to_string(),
+        Err(err) => {
+            warn!(
+                redirect_uri = requested_redirect_uri,
+                error = %err,
+                fallback = DEFAULT_REDIRECT_URI,
+                "invalid OpenAI OAuth redirect URI; falling back to default"
+            );
+            DEFAULT_REDIRECT_URI.to_string()
+        }
+    };
 
     let auth_url = reqwest::Url::parse_with_params(
         OPENAI_AUTH_URL,
@@ -360,4 +377,31 @@ fn extract_jwt_claim(jwt: &str, key: &str) -> Option<String> {
         .ok()?;
     let value: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
     value.get(key)?.as_str().map(|s| s.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DEFAULT_REDIRECT_URI, generate_pkce_start};
+
+    #[test]
+    fn generate_pkce_start_preserves_valid_redirect_uri() {
+        let start = generate_pkce_start("client-id", Some("http://localhost:3000/callback"));
+
+        assert_eq!(start.redirect_uri, "http://localhost:3000/callback");
+        assert!(
+            start
+                .auth_url
+                .contains("redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fcallback")
+        );
+    }
+
+    #[test]
+    fn generate_pkce_start_falls_back_for_invalid_redirect_uri() {
+        let start = generate_pkce_start("client-id", Some("not a valid uri"));
+
+        assert_eq!(start.redirect_uri, DEFAULT_REDIRECT_URI);
+        assert!(start.auth_url.contains(
+            "redirect_uri=http%3A%2F%2F127.0.0.1%3A1455%2Fapi%2Fproviders%2Fopenai%2Foauth%2Fcallback"
+        ));
+    }
 }
