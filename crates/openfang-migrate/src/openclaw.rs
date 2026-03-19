@@ -2807,10 +2807,13 @@ fn parse_legacy_channels(
                 });
             }
             "signal" => {
-                let fields: Vec<(&str, toml::Value)> = vec![(
+                let mut fields: Vec<(&str, toml::Value)> = vec![(
                     "api_url",
                     toml::Value::String("http://localhost:8080".into()),
                 )];
+                if let Some(ref da) = ch.default_agent {
+                    fields.push(("default_agent", toml::Value::String(da.clone())));
+                }
                 channels_table.insert(
                     "signal".to_string(),
                     build_channel_table(fields, None, None, None),
@@ -4985,6 +4988,35 @@ mod tests {
                 .imported
                 .iter()
                 .any(|item| item.kind == ItemKind::Channel && item.name == "teams")
+        );
+    }
+
+    #[test]
+    fn test_legacy_signal_default_agent_is_preserved() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(
+            messaging_dir.join("signal.yaml"),
+            "type: signal\ndefault_agent: responder\n",
+        )
+        .unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let signal = table["signal"].as_table().unwrap();
+
+        assert_eq!(signal["api_url"].as_str().unwrap(), "http://localhost:8080");
+        assert_eq!(signal["default_agent"].as_str().unwrap(), "responder");
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|item| item.kind == ItemKind::Channel && item.name == "signal")
         );
     }
 }
