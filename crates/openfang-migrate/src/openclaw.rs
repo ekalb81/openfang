@@ -1738,6 +1738,11 @@ fn migrate_channels_from_json(
                             "Failed to read Google Chat service account file for env migration: {e}"
                         )),
                     }
+                } else {
+                    report.warnings.push(format!(
+                        "Google Chat service account file not found for env migration: {}",
+                        src_sa.display()
+                    ));
                 }
             }
             let fields: Vec<(&str, toml::Value)> = vec![(
@@ -3338,109 +3343,120 @@ mod tests {
     // ===== Helper: create JSON5 workspace =====
 
     fn create_json5_workspace(dir: &Path) {
-        let json5_content = r##"{
-  agents: {
-    defaults: {
+        let google_chat_service_account = dir.join("google-chat-service-account.json");
+        std::fs::write(
+            &google_chat_service_account,
+            "{\n  \"type\": \"service_account\",\n  \"project_id\": \"fixture-project\",\n  \"private_key\": \"-----BEGIN PRIVATE KEY-----\\nfixture\\n-----END PRIVATE KEY-----\\n\"\n}",
+        )
+        .unwrap();
+
+        let json5_content = format!(
+            r##"{{
+  agents: {{
+    defaults: {{
       model: "anthropic/claude-sonnet-4-20250514",
-      tools: { profile: "coding" }
-    },
+      tools: {{ profile: "coding" }}
+    }},
     list: [
-      {
+      {{
         id: "coder",
         name: "Coder",
-        model: {
+        model: {{
           primary: "deepseek/deepseek-chat",
           fallbacks: ["groq/llama-3.3-70b-versatile", "anthropic/claude-haiku-4-5-20251001"]
-        },
-        tools: { allow: ["Read", "Write", "Bash", "WebSearch"] },
+        }},
+        tools: {{ allow: ["Read", "Write", "Bash", "WebSearch"] }},
         identity: "You are an expert software engineer."
-      },
-      {
+      }},
+      {{
         id: "researcher",
         model: "google/gemini-2.5-flash",
-        tools: { profile: "research" }
-      }
+        tools: {{ profile: "research" }}
+      }}
     ]
-  },
-  channels: {
-    telegram: {
+  }},
+  channels: {{
+    telegram: {{
       botToken: "123:ABC",
       allowFrom: ["user1", "user2"],
       groupPolicy: "open",
       dmPolicy: "allowlist"
-    },
-    discord: {
+    }},
+    discord: {{
       token: "discord-token-here",
       enabled: true,
       dmPolicy: "open"
-    },
-    slack: {
+    }},
+    slack: {{
       botToken: "xoxb-slack",
       appToken: "xapp-slack"
-    },
-    whatsapp: {
+    }},
+    whatsapp: {{
       dmPolicy: "open",
       allowFrom: ["phone1"],
       groupPolicy: "disabled"
-    },
-    signal: {
+    }},
+    signal: {{
       httpHost: "signal-api.local",
       httpPort: 9090,
       account: "+15551234567"
-    },
-    matrix: {
+    }},
+    matrix: {{
       homeserver: "https://matrix.example.com",
       userId: "@bot:example.com",
       accessToken: "syt_matrix_token_xyz"
-    },
-    irc: {
+    }},
+    irc: {{
       host: "irc.libera.chat",
       port: 6697,
       tls: true,
       nick: "openfang-bot",
       password: "irc-secret-pw",
       channels: ["#dev", "#general"]
-    },
-    mattermost: {
+    }},
+    mattermost: {{
       botToken: "mm-token-abc",
       baseUrl: "https://mm.example.com"
-    },
-    feishu: {
+    }},
+    feishu: {{
       appId: "cli_feishu123",
       appSecret: "feishu-secret-xyz",
       domain: "example.feishu.cn"
-    },
-    googlechat: {
+    }},
+    googlechat: {{
+      serviceAccountFile: {:?},
       webhookPath: "/webhook/gchat",
       dmPolicy: "open"
-    },
-    msteams: {
+    }},
+    msteams: {{
       appId: "teams-app-id-123",
       appPassword: "teams-pw-secret",
       tenantId: "tenant-uuid"
-    },
-    imessage: {
+    }},
+    imessage: {{
       cliPath: "/usr/local/bin/imessage-cli"
-    },
-    bluebubbles: {
+    }},
+    bluebubbles: {{
       serverUrl: "http://localhost:1234",
       password: "bb-pw"
-    }
-  },
-  cron: { enabled: true },
-  hooks: { enabled: true, mappings: [] },
-  skills: {
-    entries: {
-      "web-scraper": {},
-      "pdf-reader": {}
-    }
-  },
-  auth: {
-    profiles: { "default": { apiKey: "sk-xxx" } }
-  },
-  memory: { backend: "builtin" },
-  session: { scope: "per-sender" }
-}"##;
+    }}
+  }},
+  cron: {{ enabled: true }},
+  hooks: {{ enabled: true, mappings: [] }},
+  skills: {{
+    entries: {{
+      "web-scraper": {{}},
+      "pdf-reader": {{}}
+    }}
+  }},
+  auth: {{
+    profiles: {{ "default": {{ apiKey: "sk-xxx" }} }}
+  }},
+  memory: {{ backend: "builtin" }},
+  session: {{ scope: "per-sender" }}
+}}"##,
+            google_chat_service_account.display().to_string()
+        );
 
         std::fs::write(dir.join("openclaw.json"), json5_content).unwrap();
 
@@ -3546,8 +3562,8 @@ mod tests {
             .filter(|i| i.kind == ItemKind::Secret)
             .collect();
         assert!(
-            secret_items.len() >= 7,
-            "expected >=7 secrets, got {}",
+            secret_items.len() >= 8,
+            "expected >=8 secrets, got {}",
             secret_items.len()
         );
         assert!(target.path().join("secrets.env").exists());
@@ -3561,6 +3577,13 @@ mod tests {
         assert!(secrets.contains("MATTERMOST_TOKEN=\"mm-token-abc\""));
         assert!(secrets.contains("FEISHU_APP_SECRET=\"feishu-secret-xyz\""));
         assert!(secrets.contains("TEAMS_APP_PASSWORD=\"teams-pw-secret\""));
+        assert!(secrets.contains("GOOGLE_CHAT_SERVICE_ACCOUNT="));
+        assert!(secrets.contains("\\\"project_id\\\":\\\"fixture-project\\\""));
+
+        assert!(
+            config_toml.contains("service_account_env = \"GOOGLE_CHAT_SERVICE_ACCOUNT\""),
+            "google chat should reference GOOGLE_CHAT_SERVICE_ACCOUNT env in config: {config_toml}"
+        );
 
         // NO raw tokens in config.toml
         assert!(
@@ -4719,6 +4742,53 @@ mod tests {
         assert!(secrets.contains("\\\"project_id\\\":\\\"demo-project\\\""));
         assert!(
             report
+                .imported
+                .iter()
+                .any(|i| i.kind == ItemKind::Secret && i.name == "GOOGLE_CHAT_SERVICE_ACCOUNT")
+        );
+    }
+
+    #[test]
+    fn test_google_chat_missing_service_account_file_warns() {
+        let target = TempDir::new().unwrap();
+        let missing_path = target
+            .path()
+            .join("missing-google-chat-service-account.json");
+        let json5_content = format!(
+            r#"{{
+  channels: {{
+    googlechat: {{
+      serviceAccountFile: {:?}
+    }}
+  }}
+}}"#,
+            missing_path.display().to_string()
+        );
+        let root: OpenClawRoot = json5::from_str(&json5_content).unwrap();
+        let mut report = MigrationReport::default();
+
+        let channels = migrate_channels_from_json(&root, target.path(), false, &mut report);
+        let channels = channels.unwrap();
+        let table = channels.as_table().unwrap();
+        let google_chat = table["google_chat"].as_table().unwrap();
+        assert_eq!(
+            google_chat["service_account_env"].as_str().unwrap(),
+            "GOOGLE_CHAT_SERVICE_ACCOUNT"
+        );
+        assert!(
+            report.warnings.iter().any(|warning| {
+                warning.contains("Google Chat service account file not found")
+                    && warning.contains(&missing_path.display().to_string())
+            }),
+            "expected missing file warning, got: {:?}",
+            report.warnings
+        );
+        assert!(
+            !target.path().join("secrets.env").exists(),
+            "missing service account file should not create secrets.env"
+        );
+        assert!(
+            !report
                 .imported
                 .iter()
                 .any(|i| i.kind == ItemKind::Secret && i.name == "GOOGLE_CHAT_SERVICE_ACCOUNT")
