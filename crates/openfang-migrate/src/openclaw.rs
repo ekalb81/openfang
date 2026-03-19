@@ -2909,10 +2909,13 @@ fn parse_legacy_channels(
                 });
             }
             "msteams" => {
-                let fields: Vec<(&str, toml::Value)> = vec![(
+                let mut fields: Vec<(&str, toml::Value)> = vec![(
                     "app_password_env",
                     toml::Value::String("TEAMS_APP_PASSWORD".into()),
                 )];
+                if let Some(ref da) = ch.default_agent {
+                    fields.push(("default_agent", toml::Value::String(da.clone())));
+                }
                 channels_table.insert(
                     "teams".to_string(),
                     build_channel_table(fields, None, None, None),
@@ -4950,6 +4953,38 @@ mod tests {
                 .imported
                 .iter()
                 .any(|item| item.kind == ItemKind::Channel && item.name == "mattermost")
+        );
+    }
+
+    #[test]
+    fn test_legacy_teams_default_agent_is_preserved() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(
+            messaging_dir.join("msteams.yaml"),
+            "type: msteams\napp_token_env: TEAMS_TOKEN\ndefault_agent: planner\n",
+        )
+        .unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let teams = table["teams"].as_table().unwrap();
+
+        assert_eq!(
+            teams["app_password_env"].as_str().unwrap(),
+            "TEAMS_APP_PASSWORD"
+        );
+        assert_eq!(teams["default_agent"].as_str().unwrap(), "planner");
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|item| item.kind == ItemKind::Channel && item.name == "teams")
         );
     }
 }
