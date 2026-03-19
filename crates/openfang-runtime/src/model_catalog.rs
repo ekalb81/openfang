@@ -17,6 +17,7 @@ use openfang_types::model_catalog::{
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use tracing::warn;
 use uuid::Uuid;
 
 /// The model catalog — registry of all known models and providers.
@@ -331,11 +332,19 @@ impl ModelCatalog {
         if !path.exists() {
             return;
         }
-        let Ok(data) = std::fs::read_to_string(path) else {
-            return;
+        let data = match std::fs::read_to_string(path) {
+            Ok(data) => data,
+            Err(error) => {
+                warn!(path = %path.display(), %error, "Failed to read custom models file; skipping load");
+                return;
+            }
         };
-        let Ok(entries) = serde_json::from_str::<Vec<ModelCatalogEntry>>(&data) else {
-            return;
+        let entries = match serde_json::from_str::<Vec<ModelCatalogEntry>>(&data) {
+            Ok(entries) => entries,
+            Err(error) => {
+                warn!(path = %path.display(), %error, "Failed to parse custom models file; skipping load");
+                return;
+            }
         };
         for entry in entries {
             self.add_custom_model(entry);
@@ -4341,6 +4350,32 @@ mod tests {
             .flatten()
             .any(|entry| entry.file_name().to_string_lossy().starts_with(tmp_prefix));
         assert!(!leftover_tmp, "temporary custom model file should be cleaned up");
+
+        std::fs::remove_dir_all(&temp_root).unwrap();
+    }
+
+    #[test]
+    fn test_load_custom_models_invalid_json_preserves_existing_custom_models() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "openfang-model-catalog-invalid-test-{}",
+            Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&temp_root).unwrap();
+        let path = temp_root.join("custom-models.json");
+        std::fs::write(&path, "{ definitely not valid json }").unwrap();
+
+        let mut catalog = ModelCatalog::new();
+        assert!(catalog.add_custom_model(sample_custom_model("existing-custom")));
+
+        catalog.load_custom_models(&path);
+
+        let custom_models: Vec<_> = catalog
+            .models_by_provider("custom-provider")
+            .into_iter()
+            .filter(|entry| entry.tier == ModelTier::Custom)
+            .collect();
+        assert_eq!(custom_models.len(), 1);
+        assert_eq!(custom_models[0].id, "existing-custom");
 
         std::fs::remove_dir_all(&temp_root).unwrap();
     }
