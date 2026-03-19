@@ -2037,6 +2037,36 @@ mod tests {
         std::env::remove_var(file_only_key);
     }
 
+    #[test]
+    fn reload_channel_env_from_disk_ignores_malformed_empty_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let valid_secret = "OPENFANG_TEST_CHANNEL_RELOAD_VALID_SECRET";
+        let valid_dotenv = "OPENFANG_TEST_CHANNEL_RELOAD_VALID_DOTENV";
+
+        std::env::remove_var(valid_secret);
+        std::env::remove_var(valid_dotenv);
+
+        std::fs::write(
+            dir.path().join("secrets.env"),
+            format!("=ignored\n  =also_ignored\n{valid_secret}=secret-token\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join(".env"),
+            format!(" =still_ignored\n{valid_dotenv}=dotenv-token\n"),
+        )
+        .unwrap();
+
+        reload_channel_env_from_disk(dir.path());
+
+        assert_eq!(std::env::var(valid_secret).unwrap(), "secret-token");
+        assert_eq!(std::env::var(valid_dotenv).unwrap(), "dotenv-token");
+        assert!(std::env::var("").is_err());
+
+        std::env::remove_var(valid_secret);
+        std::env::remove_var(valid_dotenv);
+    }
+
     #[tokio::test]
     async fn test_bridge_skips_when_no_config() {
         let config = openfang_types::config::KernelConfig::default();
