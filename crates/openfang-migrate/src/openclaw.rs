@@ -2882,10 +2882,13 @@ fn parse_legacy_channels(
                 });
             }
             "feishu" => {
-                let fields: Vec<(&str, toml::Value)> = vec![(
+                let mut fields: Vec<(&str, toml::Value)> = vec![(
                     "app_secret_env",
                     toml::Value::String("FEISHU_APP_SECRET".into()),
                 )];
+                if let Some(ref da) = ch.default_agent {
+                    fields.push(("default_agent", toml::Value::String(da.clone())));
+                }
                 channels_table.insert(
                     "feishu".to_string(),
                     build_channel_table(fields, None, None, None),
@@ -5049,6 +5052,38 @@ mod tests {
                 .imported
                 .iter()
                 .any(|item| item.kind == ItemKind::Channel && item.name == "irc")
+        );
+    }
+
+    #[test]
+    fn test_legacy_feishu_default_agent_is_preserved() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(
+            messaging_dir.join("feishu.yaml"),
+            "type: feishu\ndefault_agent: concierge\n",
+        )
+        .unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let feishu = table["feishu"].as_table().unwrap();
+
+        assert_eq!(
+            feishu["app_secret_env"].as_str().unwrap(),
+            "FEISHU_APP_SECRET"
+        );
+        assert_eq!(feishu["default_agent"].as_str().unwrap(), "concierge");
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|item| item.kind == ItemKind::Channel && item.name == "feishu")
         );
     }
 }
