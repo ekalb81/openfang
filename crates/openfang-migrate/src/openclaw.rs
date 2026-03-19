@@ -2826,8 +2826,11 @@ fn parse_legacy_channels(
                     .access_token_env
                     .clone()
                     .unwrap_or_else(|| "MATRIX_ACCESS_TOKEN".to_string());
-                let fields: Vec<(&str, toml::Value)> =
+                let mut fields: Vec<(&str, toml::Value)> =
                     vec![("access_token_env", toml::Value::String(token_env))];
+                if let Some(ref da) = ch.default_agent {
+                    fields.push(("default_agent", toml::Value::String(da.clone())));
+                }
                 channels_table.insert(
                     "matrix".to_string(),
                     build_channel_table(fields, None, None, None),
@@ -4886,6 +4889,35 @@ mod tests {
                 .imported
                 .iter()
                 .any(|item| item.kind == ItemKind::Channel && item.name == "whatsapp")
+        );
+    }
+
+    #[test]
+    fn test_legacy_matrix_default_agent_is_preserved() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(
+            messaging_dir.join("matrix.yaml"),
+            "type: matrix\naccess_token_env: MATRIX_TOKEN\ndefault_agent: triage\n",
+        )
+        .unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let matrix = table["matrix"].as_table().unwrap();
+
+        assert_eq!(matrix["access_token_env"].as_str().unwrap(), "MATRIX_TOKEN");
+        assert_eq!(matrix["default_agent"].as_str().unwrap(), "triage");
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|item| item.kind == ItemKind::Channel && item.name == "matrix")
         );
     }
 }
