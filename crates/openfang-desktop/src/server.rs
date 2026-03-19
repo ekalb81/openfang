@@ -6,8 +6,8 @@
 use openfang_api::server::build_router;
 use openfang_kernel::OpenFangKernel;
 use std::net::{SocketAddr, TcpListener};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::watch;
 use tracing::{error, info};
 
@@ -170,24 +170,83 @@ fn load_dotenv_files() {
         let path = home.join(filename);
         if let Ok(content) = std::fs::read_to_string(&path) {
             for line in content.lines() {
-                let trimmed = line.trim();
-                if trimmed.is_empty() || trimmed.starts_with('#') {
-                    continue;
-                }
-                if let Some((key, value)) = trimmed.split_once('=') {
-                    let key = key.trim();
-                    let mut value = value.trim().to_string();
-                    if ((value.starts_with('"') && value.ends_with('"'))
-                        || (value.starts_with('\'') && value.ends_with('\'')))
-                        && value.len() >= 2
-                    {
-                        value = value[1..value.len() - 1].to_string();
-                    }
-                    if !key.is_empty() && std::env::var(key).is_err() {
-                        std::env::set_var(key, &value);
+                if let Some((key, value)) = parse_env_line(line) {
+                    if std::env::var(&key).is_err() {
+                        std::env::set_var(key, value);
                     }
                 }
             }
         }
+    }
+}
+
+fn parse_env_line(line: &str) -> Option<(String, String)> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return None;
+    }
+
+    let (key, raw_value) = trimmed.split_once('=')?;
+    let key = key.trim();
+    if key.is_empty() {
+        return None;
+    }
+
+    let mut value = raw_value.trim().to_string();
+    if value.len() >= 2 {
+        let first = value.chars().next()?;
+        let last = value.chars().last()?;
+        if (first == '"' || first == '\'') && first == last {
+            value = unescape_quoted_value(&value[1..value.len() - 1], first);
+        }
+    }
+
+    Some((key.to_string(), value))
+}
+
+fn unescape_quoted_value(value: &str, quote: char) -> String {
+    let mut unescaped = String::with_capacity(value.len());
+    let mut chars = value.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            if let Some(&next) = chars.peek() {
+                if next == quote || next == '\\' {
+                    unescaped.push(next);
+                    chars.next();
+                    continue;
+                }
+            }
+        }
+
+        unescaped.push(ch);
+    }
+
+    unescaped
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_env_line;
+
+    #[test]
+    fn parse_env_line_unescapes_double_quoted_values() {
+        let (key, value) = parse_env_line(r#"API_KEY="path\\to\\\"quoted\\\"""#).unwrap();
+        assert_eq!(key, "API_KEY");
+        assert_eq!(value, "path\\to\\\"quoted\\\"");
+    }
+
+    #[test]
+    fn parse_env_line_unescapes_single_quoted_values() {
+        let (key, value) = parse_env_line("TOKEN='it\\'s\\\\fine'").unwrap();
+        assert_eq!(key, "TOKEN");
+        assert_eq!(value, "it's\\fine");
+    }
+
+    #[test]
+    fn parse_env_line_preserves_unquoted_backslashes() {
+        let (key, value) = parse_env_line(r#"PATH=C:\tools\openfang"#).unwrap();
+        assert_eq!(key, "PATH");
+        assert_eq!(value, r#"C:\tools\openfang"#);
     }
 }
