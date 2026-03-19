@@ -3551,14 +3551,14 @@ mod tests {
         assert!(target.path().join("secrets.env").exists());
 
         let secrets = std::fs::read_to_string(target.path().join("secrets.env")).unwrap();
-        assert!(secrets.contains("TELEGRAM_BOT_TOKEN=123:ABC"));
-        assert!(secrets.contains("DISCORD_BOT_TOKEN=discord-token-here"));
-        assert!(secrets.contains("SLACK_BOT_TOKEN=xoxb-slack"));
-        assert!(secrets.contains("MATRIX_ACCESS_TOKEN=syt_matrix_token_xyz"));
-        assert!(secrets.contains("IRC_PASSWORD=irc-secret-pw"));
-        assert!(secrets.contains("MATTERMOST_TOKEN=mm-token-abc"));
-        assert!(secrets.contains("FEISHU_APP_SECRET=feishu-secret-xyz"));
-        assert!(secrets.contains("TEAMS_APP_PASSWORD=teams-pw-secret"));
+        assert!(secrets.contains("TELEGRAM_BOT_TOKEN=\"123:ABC\""));
+        assert!(secrets.contains("DISCORD_BOT_TOKEN=\"discord-token-here\""));
+        assert!(secrets.contains("SLACK_BOT_TOKEN=\"xoxb-slack\""));
+        assert!(secrets.contains("MATRIX_ACCESS_TOKEN=\"syt_matrix_token_xyz\""));
+        assert!(secrets.contains("IRC_PASSWORD=\"irc-secret-pw\""));
+        assert!(secrets.contains("MATTERMOST_TOKEN=\"mm-token-abc\""));
+        assert!(secrets.contains("FEISHU_APP_SECRET=\"feishu-secret-xyz\""));
+        assert!(secrets.contains("TEAMS_APP_PASSWORD=\"teams-pw-secret\""));
 
         // NO raw tokens in config.toml
         assert!(
@@ -3692,6 +3692,11 @@ mod tests {
         assert_eq!(users.len(), 1);
         assert_eq!(users[0].as_str().unwrap(), "alice");
 
+        // Slack should preserve both extracted env references.
+        let slack = ch_table["slack"].as_table().unwrap();
+        assert_eq!(slack["bot_token_env"].as_str().unwrap(), "SLACK_BOT_TOKEN");
+        assert_eq!(slack["app_token_env"].as_str().unwrap(), "SLACK_APP_TOKEN");
+
         // 3 channel imports
         assert_eq!(
             report
@@ -3714,9 +3719,9 @@ mod tests {
 
         // Secrets file written
         let secrets = std::fs::read_to_string(target.path().join("secrets.env")).unwrap();
-        assert!(secrets.contains("TELEGRAM_BOT_TOKEN=123"));
-        assert!(secrets.contains("DISCORD_BOT_TOKEN=abc"));
-        assert!(secrets.contains("SLACK_BOT_TOKEN=xoxb"));
+        assert!(secrets.contains("TELEGRAM_BOT_TOKEN=\"123\""));
+        assert!(secrets.contains("DISCORD_BOT_TOKEN=\"abc\""));
+        assert!(secrets.contains("SLACK_BOT_TOKEN=\"xoxb\""));
     }
 
     #[test]
@@ -4471,15 +4476,15 @@ mod tests {
         let secrets = std::fs::read_to_string(&secrets_path).unwrap();
 
         // Verify each token is in secrets.env
-        assert!(secrets.contains("TELEGRAM_BOT_TOKEN=123:ABC"));
-        assert!(secrets.contains("DISCORD_BOT_TOKEN=discord-token-here"));
-        assert!(secrets.contains("SLACK_BOT_TOKEN=xoxb-slack"));
-        assert!(secrets.contains("SLACK_APP_TOKEN=xapp-slack"));
-        assert!(secrets.contains("MATRIX_ACCESS_TOKEN=syt_matrix_token_xyz"));
-        assert!(secrets.contains("IRC_PASSWORD=irc-secret-pw"));
-        assert!(secrets.contains("MATTERMOST_TOKEN=mm-token-abc"));
-        assert!(secrets.contains("FEISHU_APP_SECRET=feishu-secret-xyz"));
-        assert!(secrets.contains("TEAMS_APP_PASSWORD=teams-pw-secret"));
+        assert!(secrets.contains("TELEGRAM_BOT_TOKEN=\"123:ABC\""));
+        assert!(secrets.contains("DISCORD_BOT_TOKEN=\"discord-token-here\""));
+        assert!(secrets.contains("SLACK_BOT_TOKEN=\"xoxb-slack\""));
+        assert!(secrets.contains("SLACK_APP_TOKEN=\"xapp-slack\""));
+        assert!(secrets.contains("MATRIX_ACCESS_TOKEN=\"syt_matrix_token_xyz\""));
+        assert!(secrets.contains("IRC_PASSWORD=\"irc-secret-pw\""));
+        assert!(secrets.contains("MATTERMOST_TOKEN=\"mm-token-abc\""));
+        assert!(secrets.contains("FEISHU_APP_SECRET=\"feishu-secret-xyz\""));
+        assert!(secrets.contains("TEAMS_APP_PASSWORD=\"teams-pw-secret\""));
 
         // config.toml must NOT contain any raw secrets
         let config_toml = std::fs::read_to_string(target.path().join("config.toml")).unwrap();
