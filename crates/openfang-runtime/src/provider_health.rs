@@ -53,6 +53,10 @@ pub struct ProbeCache {
     ttl: Duration,
 }
 
+fn cache_key(provider_id: &str, base_url: &str) -> String {
+    format!("{provider_id}:{base_url}")
+}
+
 impl ProbeCache {
     /// Create a new cache with the default 60-second TTL.
     pub fn new() -> Self {
@@ -63,23 +67,24 @@ impl ProbeCache {
     }
 
     /// Look up a cached probe result. Returns `None` if missing or expired.
-    pub fn get(&self, provider_id: &str) -> Option<ProbeResult> {
-        if let Some(entry) = self.inner.get(provider_id) {
+    pub fn get(&self, provider_id: &str, base_url: &str) -> Option<ProbeResult> {
+        let key = cache_key(provider_id, base_url);
+        if let Some(entry) = self.inner.get(&key) {
             let (ts, ref result) = *entry;
             if ts.elapsed() < self.ttl {
                 return Some(result.clone());
             }
             // Expired — drop the read guard before removing
             drop(entry);
-            self.inner.remove(provider_id);
+            self.inner.remove(&key);
         }
         None
     }
 
     /// Store a probe result.
-    pub fn insert(&self, provider_id: &str, result: ProbeResult) {
+    pub fn insert(&self, provider_id: &str, base_url: &str, result: ProbeResult) {
         self.inner
-            .insert(provider_id.to_string(), (Instant::now(), result));
+            .insert(cache_key(provider_id, base_url), (Instant::now(), result));
     }
 }
 
@@ -206,11 +211,11 @@ pub async fn probe_provider_cached(
     base_url: &str,
     cache: &ProbeCache,
 ) -> ProbeResult {
-    if let Some(cached) = cache.get(provider) {
+    if let Some(cached) = cache.get(provider, base_url) {
         return cached;
     }
     let result = probe_provider(provider, base_url).await;
-    cache.insert(provider, result.clone());
+    cache.insert(provider, base_url, result.clone());
     result
 }
 
@@ -338,7 +343,7 @@ mod tests {
     #[test]
     fn test_probe_cache_miss_returns_none() {
         let cache = ProbeCache::new();
-        assert!(cache.get("ollama").is_none());
+        assert!(cache.get("ollama", "http://localhost:11434/v1").is_none());
     }
 
     #[test]
@@ -350,17 +355,37 @@ mod tests {
             discovered_models: vec!["llama3".into()],
             error: None,
         };
-        cache.insert("ollama", result.clone());
-        let cached = cache.get("ollama").expect("should be cached");
+        cache.insert("ollama", "http://localhost:11434/v1", result.clone());
+        let cached = cache
+            .get("ollama", "http://localhost:11434/v1")
+            .expect("should be cached");
         assert!(cached.reachable);
         assert_eq!(cached.latency_ms, 42);
         assert_eq!(cached.discovered_models, vec!["llama3".to_string()]);
     }
 
     #[test]
+    fn test_probe_cache_separates_same_provider_by_base_url() {
+        let cache = ProbeCache::new();
+        let original = ProbeResult {
+            reachable: true,
+            latency_ms: 42,
+            discovered_models: vec!["llama3".into()],
+            error: None,
+        };
+        cache.insert("ollama", "http://localhost:11434/v1", original.clone());
+
+        assert!(cache.get("ollama", "http://localhost:22434/v1").is_none());
+        let cached = cache
+            .get("ollama", "http://localhost:11434/v1")
+            .expect("original URL should still be cached");
+        assert_eq!(cached.discovered_models, original.discovered_models);
+    }
+
+    #[test]
     fn test_probe_cache_default() {
         let cache = ProbeCache::default();
-        assert!(cache.get("anything").is_none());
+        assert!(cache.get("anything", "http://localhost:1234/v1").is_none());
         assert_eq!(cache.ttl, Duration::from_secs(PROBE_CACHE_TTL_SECS));
     }
 }
