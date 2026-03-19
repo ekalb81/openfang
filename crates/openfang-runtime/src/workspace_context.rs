@@ -189,13 +189,8 @@ fn detect_project_type(root: &Path) -> ProjectType {
         ProjectType::Go
     } else if root.join("pom.xml").exists() || root.join("build.gradle").exists() {
         ProjectType::Java
-    } else if root.join("*.csproj").exists() || root.join("*.sln").exists() {
-        // Glob patterns don't work with exists(), so check differently
-        if has_extension_in_dir(root, "csproj") || has_extension_in_dir(root, "sln") {
-            ProjectType::DotNet
-        } else {
-            ProjectType::Unknown
-        }
+    } else if has_extension_in_dir(root, "csproj") || has_extension_in_dir(root, "sln") {
+        ProjectType::DotNet
     } else {
         ProjectType::Unknown
     }
@@ -296,6 +291,34 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("go.mod"), "module example.com/test").unwrap();
         assert_eq!(detect_project_type(&dir), ProjectType::Go);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_detect_dotnet_project_from_csproj() {
+        let dir = std::env::temp_dir().join("openfang_ws_dotnet_csproj_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Example.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\" />",
+        )
+        .unwrap();
+        assert_eq!(detect_project_type(&dir), ProjectType::DotNet);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_detect_dotnet_project_from_sln() {
+        let dir = std::env::temp_dir().join("openfang_ws_dotnet_sln_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Example.sln"),
+            "Microsoft Visual Studio Solution File",
+        )
+        .unwrap();
+        assert_eq!(detect_project_type(&dir), ProjectType::DotNet);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
