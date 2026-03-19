@@ -153,6 +153,9 @@ fn load_dotenv(path: &Path) -> Result<HashMap<String, String>, std::io::Error> {
         }
         if let Some((key, value)) = line.split_once('=') {
             let key = key.trim();
+            if key.is_empty() {
+                continue;
+            }
             let value = value.trim();
             let parsed = if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
                 unescape_quoted_value(&value[1..value.len() - 1], '"')
@@ -245,6 +248,18 @@ SINGLE_QUOTED='single'
         assert_eq!(map.get("DOUBLE").unwrap(), "escaped \"quote\" and \\ slash");
         assert_eq!(map.get("SINGLE").unwrap(), "escaped 'quote' and \\ slash");
         assert_eq!(map.get("PLAIN").unwrap(), "keep\\path");
+    }
+
+    #[test]
+    fn load_dotenv_ignores_empty_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let env_path = dir.path().join(".env");
+        std::fs::write(&env_path, "=ignored\n  =also_ignored\nVALID_KEY=kept\n").unwrap();
+
+        let map = load_dotenv(&env_path).unwrap();
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.get("VALID_KEY").unwrap(), "kept");
+        assert!(!map.contains_key(""));
     }
 
     #[test]
