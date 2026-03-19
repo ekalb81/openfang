@@ -130,14 +130,41 @@ fn parse_env_line(line: &str) -> Option<(String, String)> {
     }
 
     // Strip matching quotes
-    if ((value.starts_with('"') && value.ends_with('"'))
-        || (value.starts_with('\'') && value.ends_with('\'')))
-        && value.len() >= 2
-    {
+    let quote_char = if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+        Some('"')
+    } else if value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2 {
+        Some('\'')
+    } else {
+        None
+    };
+
+    if let Some(quote_char) = quote_char {
         value = value[1..value.len() - 1].to_string();
+        value = unescape_quoted_value(&value, quote_char);
     }
 
     Some((key, value))
+}
+
+fn unescape_quoted_value(value: &str, quote_char: char) -> String {
+    let mut result = String::with_capacity(value.len());
+    let mut chars = value.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            match chars.peek().copied() {
+                Some(next) if next == quote_char || next == '\\' => {
+                    result.push(next);
+                    chars.next();
+                }
+                _ => result.push(ch),
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
 }
 
 /// Read all key-value pairs from the .env file.
@@ -212,6 +239,27 @@ mod tests {
         let (k, v) = parse_env_line("KEY='value'").unwrap();
         assert_eq!(k, "KEY");
         assert_eq!(v, "value");
+    }
+
+    #[test]
+    fn test_parse_env_line_unescapes_double_quotes() {
+        let (k, v) = parse_env_line(r#"KEY="say \"hello\"""#).unwrap();
+        assert_eq!(k, "KEY");
+        assert_eq!(v, "say \"hello\"");
+    }
+
+    #[test]
+    fn test_parse_env_line_unescapes_single_quotes() {
+        let (k, v) = parse_env_line("KEY='it\\'s fine'").unwrap();
+        assert_eq!(k, "KEY");
+        assert_eq!(v, "it's fine");
+    }
+
+    #[test]
+    fn test_parse_env_line_preserves_unrelated_backslashes() {
+        let (k, v) = parse_env_line(r#"KEY="C:\\temp\\file.txt""#).unwrap();
+        assert_eq!(k, "KEY");
+        assert_eq!(v, r#"C:\temp\file.txt"#);
     }
 
     #[test]

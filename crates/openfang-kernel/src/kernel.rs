@@ -877,7 +877,7 @@ impl OpenFangKernel {
                         None
                     }
                 }
-            } else if std::env::var("OPENAI_API_KEY").is_ok() {
+            } else if openfang_runtime::model_catalog::read_openai_credential().is_some() {
                 let model = if configured_model == "all-MiniLM-L6-v2" {
                     default_embedding_model_for_provider("openai")
                 } else {

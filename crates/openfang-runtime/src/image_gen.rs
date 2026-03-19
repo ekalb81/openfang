@@ -12,8 +12,9 @@ pub async fn generate_image(request: &ImageGenRequest) -> Result<ImageGenResult,
     request.validate()?;
 
     // Check for API key (presence only — never read the actual value into logs)
-    let api_key = std::env::var("OPENAI_API_KEY")
-        .map_err(|_| "OPENAI_API_KEY not set. Image generation requires an OpenAI API key.")?;
+    let api_key = crate::model_catalog::read_openai_credential().ok_or(
+        "No OpenAI credential found. Image generation requires OPENAI_API_KEY, Codex CLI auth, or OpenClaw OAuth.",
+    )?;
 
     let model_str = request.model.to_string();
 

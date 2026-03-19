@@ -93,6 +93,20 @@ For Gemini specifically, either `GEMINI_API_KEY` or `GOOGLE_API_KEY` will work.
 2. Create an API key under API Keys
 3. `export OPENAI_API_KEY="sk-..."`
 
+**Native OAuth (experimental):** OpenFang also ships a first-class OpenAI OAuth path.
+Set `OPENAI_OAUTH_CLIENT_ID` (or `OPENAI_CLIENT_ID`), then use:
+- `POST /api/providers/openai/oauth/start`
+- open the returned `auth_url`
+- finish at `GET /api/providers/openai/oauth/callback?code=...&state=...`
+
+Credentials are stored in `~/.openfang/openai-oauth.json` by default.
+
+OpenFang can also reuse an already-signed-in OpenAI credential from:
+- Codex CLI: `~/.codex/auth.json`
+- OpenClaw OAuth: `~/.openclaw/agents/main/agent/auth-profiles.json` (`openai-codex` OAuth profile)
+
+In those cases, `OPENAI_API_KEY` is optional as long as a valid cached access token exists.
+
 ---
 
 ### 3. Google Gemini

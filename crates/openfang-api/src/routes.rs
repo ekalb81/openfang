@@ -6137,6 +6137,17 @@ pub async fn list_providers(State(state): State<Arc<AppState>>) -> impl IntoResp
             "base_url": p.base_url,
         });
 
+        if p.id == "openai" {
+            entry["oauth_supported"] = serde_json::json!(true);
+            entry["oauth_start_path"] = serde_json::json!("/api/providers/openai/oauth/start");
+            entry["oauth_status_path"] = serde_json::json!("/api/providers/openai/oauth/status");
+            entry["oauth_refresh_path"] = serde_json::json!("/api/providers/openai/oauth/refresh");
+            entry["oauth_logout_path"] = serde_json::json!("/api/providers/openai/oauth/logout");
+        }
+        if p.id == "github-copilot" {
+            entry["oauth_supported"] = serde_json::json!(true);
+        }
+
         // For local providers, attach the probe result
         if let Some(probe) = probe_map.remove(&i) {
             entry["is_local"] = serde_json::json!(true);
@@ -10539,8 +10550,17 @@ struct CopilotFlowState {
     expires_at: Instant,
 }
 
+#[derive(Clone)]
+struct OpenAIFlowState {
+    profile_id: String,
+    verifier: String,
+    redirect_uri: String,
+    expires_at: Instant,
+}
+
 /// Active device flows, keyed by poll_id. Auto-expire after the flow's TTL.
 static COPILOT_FLOWS: LazyLock<DashMap<String, CopilotFlowState>> = LazyLock::new(DashMap::new);
+static OPENAI_OAUTH_FLOWS: LazyLock<DashMap<String, OpenAIFlowState>> = LazyLock::new(DashMap::new);
 
 /// POST /api/providers/github-copilot/oauth/start
 ///
@@ -10678,6 +10698,279 @@ pub async fn copilot_oauth_poll(
         openfang_runtime::copilot_oauth::DeviceFlowStatus::Error(e) => (
             StatusCode::OK,
             Json(serde_json::json!({"status": "error", "error": e})),
+        ),
+    }
+}
+
+/// POST /api/providers/openai/oauth/start
+///
+/// Starts a native OpenAI OAuth flow and returns an authorization URL.
+pub async fn openai_oauth_start(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
+    OPENAI_OAUTH_FLOWS.retain(|_, state| state.expires_at > Instant::now());
+
+    let client_id = std::env::var("OPENAI_OAUTH_CLIENT_ID")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("OPENAI_CLIENT_ID").ok().filter(|s| !s.trim().is_empty()));
+    let Some(client_id) = client_id else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "Missing OPENAI_OAUTH_CLIENT_ID (or OPENAI_CLIENT_ID) environment variable"
+            })),
+        );
+    };
+
+    let redirect_uri = body
+        .get("redirect_uri")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty());
+    let profile_id = body
+        .get("profile_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("default");
+    let start = openfang_runtime::openai_oauth::generate_pkce_start(&client_id, redirect_uri);
+
+    OPENAI_OAUTH_FLOWS.insert(
+        start.state.clone(),
+        OpenAIFlowState {
+            profile_id: profile_id.to_string(),
+            verifier: start.verifier.clone(),
+            redirect_uri: start.redirect_uri.clone(),
+            expires_at: Instant::now() + std::time::Duration::from_secs(15 * 60),
+        },
+    );
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "auth_url": start.auth_url,
+            "state": start.state,
+            "redirect_uri": start.redirect_uri,
+            "profile_id": profile_id,
+            "expires_in": 900,
+            "code_challenge_method": "S256",
+        })),
+    )
+}
+
+/// GET /api/providers/openai/oauth/callback
+///
+/// Completes the native OpenAI OAuth flow, exchanges the code, and stores credentials.
+pub async fn openai_oauth_callback(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let code = match params.get("code").map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        Some(v) => v.to_string(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Missing code query parameter"})),
+            )
+        }
+    };
+    let state_param = match params.get("state").map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        Some(v) => v.to_string(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Missing state query parameter"})),
+            )
+        }
+    };
+
+    let flow = match OPENAI_OAUTH_FLOWS.remove(&state_param) {
+        Some((_, flow)) if flow.expires_at > Instant::now() => flow,
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Unknown or expired OAuth state"})),
+            )
+        }
+    };
+
+    let client_id = std::env::var("OPENAI_OAUTH_CLIENT_ID")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("OPENAI_CLIENT_ID").ok().filter(|s| !s.trim().is_empty()));
+    let Some(client_id) = client_id else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "Missing OPENAI_OAUTH_CLIENT_ID (or OPENAI_CLIENT_ID) environment variable"
+            })),
+        );
+    };
+
+    match openfang_runtime::openai_oauth::exchange_code(
+        &client_id,
+        &code,
+        &flow.verifier,
+        &flow.redirect_uri,
+    )
+    .await
+    {
+        Ok(creds) => {
+            let store_path = openfang_runtime::openai_oauth::store_path_for_profile(Some(&flow.profile_id));
+            if let Err(e) = openfang_runtime::openai_oauth::save_credentials(&store_path, &creds) {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": e})),
+                );
+            }
+
+            state
+                .kernel
+                .model_catalog
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .detect_auth();
+
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "complete",
+                    "provider": "openai",
+                    "mode": "oauth",
+                    "expires": creds.expires,
+                    "account_id": creds.account_id,
+                    "email": creds.email,
+                    "profile_id": flow.profile_id,
+                    "store_path": store_path,
+                })),
+            )
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({"error": e})),
+        ),
+    }
+}
+
+/// GET /api/providers/openai/oauth/status
+pub async fn openai_oauth_status(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let profile_id = params.get("profile_id").map(|s| s.as_str());
+    let store_path = openfang_runtime::openai_oauth::store_path_for_profile(profile_id);
+    let creds = openfang_runtime::openai_oauth::load_credentials(&store_path);
+    match creds {
+        Some(creds) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "authenticated": true,
+                "provider": creds.provider,
+                "mode": creds.mode,
+                "expires": creds.expires,
+                "valid": openfang_runtime::openai_oauth::credentials_valid(&creds),
+                "account_id": creds.account_id,
+                "email": creds.email,
+                "profile_id": profile_id.unwrap_or("default"),
+                "store_path": store_path,
+            })),
+        ),
+        None => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "authenticated": false,
+                "provider": "openai",
+                "mode": "oauth",
+                "profile_id": profile_id.unwrap_or("default"),
+                "store_path": store_path,
+            })),
+        ),
+    }
+}
+
+/// POST /api/providers/openai/oauth/refresh
+pub async fn openai_oauth_refresh(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let client_id = std::env::var("OPENAI_OAUTH_CLIENT_ID")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("OPENAI_CLIENT_ID").ok().filter(|s| !s.trim().is_empty()));
+    let Some(client_id) = client_id else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "Missing OPENAI_OAUTH_CLIENT_ID (or OPENAI_CLIENT_ID) environment variable"
+            })),
+        );
+    };
+
+    let profile_id = body
+        .get("profile_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty());
+    let store_path = openfang_runtime::openai_oauth::store_path_for_profile(profile_id);
+    let Some(creds) = openfang_runtime::openai_oauth::load_credentials(&store_path) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "No OpenAI OAuth credentials stored"})),
+        );
+    };
+
+    match openfang_runtime::openai_oauth::refresh_credentials(&client_id, &creds).await {
+        Ok(refreshed) => {
+            if let Err(e) = openfang_runtime::openai_oauth::save_credentials(&store_path, &refreshed) {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": e})),
+                );
+            }
+
+            state
+                .kernel
+                .model_catalog
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .detect_auth();
+
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "refreshed",
+                    "expires": refreshed.expires,
+                    "account_id": refreshed.account_id,
+                    "email": refreshed.email,
+                    "profile_id": profile_id.unwrap_or("default"),
+                })),
+            )
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({"error": e})),
+        ),
+    }
+}
+
+/// DELETE /api/providers/openai/oauth/logout
+pub async fn openai_oauth_logout(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let profile_id = params.get("profile_id").map(|s| s.as_str());
+    let store_path = openfang_runtime::openai_oauth::store_path_for_profile(profile_id);
+    match openfang_runtime::openai_oauth::remove_credentials(&store_path) {
+        Ok(()) => {
+            state
+                .kernel
+                .model_catalog
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .detect_auth();
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({"status": "logged_out", "profile_id": profile_id.unwrap_or("default")})),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e})),
         ),
     }
 }

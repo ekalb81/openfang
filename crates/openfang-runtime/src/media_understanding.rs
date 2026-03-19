@@ -38,7 +38,7 @@ impl MediaEngine {
         // Determine which provider to use
         let provider = self.config.image_provider.as_deref()
             .or_else(|| detect_vision_provider())
-            .ok_or("No vision-capable LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY")?;
+            .ok_or("No vision-capable LLM provider configured. Set ANTHROPIC_API_KEY, GEMINI_API_KEY, or authenticate OpenAI (API key / OAuth)")?;
 
         // For now, return a structured result indicating the provider.
         // Actual API call would go here using reqwest.
@@ -70,7 +70,7 @@ impl MediaEngine {
             .as_deref()
             .or_else(|| detect_audio_provider())
             .ok_or(
-                "No audio transcription provider configured. Set GROQ_API_KEY or OPENAI_API_KEY",
+                "No audio transcription provider configured. Set GROQ_API_KEY or authenticate OpenAI (API key / OAuth)",
             )?;
 
         let _permit = self.semaphore.acquire().await.map_err(|e| e.to_string())?;
@@ -122,7 +122,8 @@ impl MediaEngine {
             ),
             "openai" => (
                 "https://api.openai.com/v1/audio/transcriptions",
-                std::env::var("OPENAI_API_KEY").map_err(|_| "OPENAI_API_KEY not set")?,
+                crate::model_catalog::read_openai_credential()
+                    .ok_or("No OpenAI credential found (OPENAI_API_KEY, Codex CLI, or OpenClaw OAuth)")?,
             ),
             other => return Err(format!("Unsupported audio provider: {}", other)),
         };
@@ -247,7 +248,7 @@ fn detect_vision_provider() -> Option<&'static str> {
     if std::env::var("ANTHROPIC_API_KEY").is_ok() {
         return Some("anthropic");
     }
-    if std::env::var("OPENAI_API_KEY").is_ok() {
+    if crate::model_catalog::read_openai_credential().is_some() {
         return Some("openai");
     }
     if std::env::var("GEMINI_API_KEY").is_ok() || std::env::var("GOOGLE_API_KEY").is_ok() {
@@ -363,7 +364,7 @@ fn detect_audio_provider() -> Option<&'static str> {
     if std::env::var("GROQ_API_KEY").is_ok() {
         return Some("groq");
     }
-    if std::env::var("OPENAI_API_KEY").is_ok() {
+    if crate::model_catalog::read_openai_credential().is_some() {
         return Some("openai");
     }
     None

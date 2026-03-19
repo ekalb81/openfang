@@ -183,6 +183,8 @@ pub fn create_embedding_driver(
 ) -> Result<Box<dyn EmbeddingDriver + Send + Sync>, EmbeddingError> {
     let api_key = if api_key_env.is_empty() {
         String::new()
+    } else if provider == "openai" && api_key_env == "OPENAI_API_KEY" {
+        crate::model_catalog::read_openai_credential().unwrap_or_default()
     } else {
         std::env::var(api_key_env).unwrap_or_default()
     };

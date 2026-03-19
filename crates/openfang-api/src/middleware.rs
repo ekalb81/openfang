@@ -105,6 +105,8 @@ pub async fn auth(
         || (path == "/api/models" && is_get)
         || (path == "/api/models/aliases" && is_get)
         || (path == "/api/providers" && is_get)
+        || (path == "/api/providers/openai/oauth/callback" && is_get)
+        || (path == "/api/providers/openai/oauth/status" && is_get)
         || (path == "/api/budget" && is_get)
         || (path == "/api/budget/agents" && is_get)
         || (path.starts_with("/api/budget/agents/") && is_get)

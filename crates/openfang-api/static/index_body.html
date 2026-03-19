@@ -3252,6 +3252,24 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                       </div>
                     </div>
                   </template>
+                  <!-- OpenAI OAuth -->
+                  <template x-if="p.id === 'openai' && p.oauth_supported">
+                    <div class="mt-2" style="border-top:1px solid var(--border);padding-top:8px">
+                      <div class="text-xs text-dim mb-2">OAuth</div>
+                      <div class="flex gap-2" style="flex-wrap:wrap">
+                        <button class="btn btn-primary btn-sm" @click="startOpenAIOAuth()" :disabled="openaiOAuth.working">Connect OpenAI</button>
+                        <button class="btn btn-ghost btn-sm" @click="refreshOpenAIOAuth()" :disabled="openaiOAuth.working || !(openaiOAuth.status && openaiOAuth.status.authenticated)">Refresh</button>
+                        <button class="btn btn-ghost btn-sm" style="color:var(--error)" @click="logoutOpenAIOAuth()" :disabled="openaiOAuth.working || !(openaiOAuth.status && openaiOAuth.status.authenticated)">Disconnect</button>
+                      </div>
+                      <div class="text-xs text-dim mt-2" x-show="openaiOAuth.status && openaiOAuth.status.authenticated">
+                        <span x-text="'Signed in' + (openaiOAuth.status.email ? ' as ' + openaiOAuth.status.email : '')"></span>
+                      </div>
+                      <div class="text-xs text-dim mt-2" x-show="openaiOAuth.authUrl && (!openaiOAuth.status || !openaiOAuth.status.authenticated)">
+                        If the browser did not open, continue here:
+                        <a :href="openaiOAuth.authUrl" target="_blank" style="color:var(--accent-light)">OpenAI sign-in</a>
+                      </div>
+                    </div>
+                  </template>
                   <!-- Claude Code install hint -->
                   <template x-if="p.id === 'claude-code' && p.auth_status !== 'configured'">
                     <div class="mt-2 text-xs text-dim">Install: <code style="color:var(--accent-light);background:var(--bg);padding:1px 4px;border-radius:2px">npm install -g @anthropic-ai/claude-code</code></div>
@@ -3263,7 +3281,9 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                         <span x-show="!providerTesting[p.id]">Test</span>
                         <span x-show="providerTesting[p.id]" class="spinner" style="width:10px;height:10px;border-width:2px"></span>
                       </button>
-                      <button class="btn btn-ghost btn-sm" style="color:var(--error)" @click="removeProviderKey(p)">Remove Key</button>
+                      <button class="btn btn-ghost btn-sm" style="color:var(--error)" @click="(p.id === 'openai' && openaiOAuth.status && openaiOAuth.status.authenticated) ? logoutOpenAIOAuth() : removeProviderKey(p)">
+                        <span x-text="(p.id === 'openai' && openaiOAuth.status && openaiOAuth.status.authenticated) ? 'Disconnect OAuth' : 'Remove Key'"></span>
+                      </button>
                     </div>
                   </template>
                   <!-- No key needed -->

@@ -544,6 +544,26 @@ pub async fn build_router(
             axum::routing::get(routes::copilot_oauth_poll),
         )
         .route(
+            "/api/providers/openai/oauth/start",
+            axum::routing::post(routes::openai_oauth_start),
+        )
+        .route(
+            "/api/providers/openai/oauth/callback",
+            axum::routing::get(routes::openai_oauth_callback),
+        )
+        .route(
+            "/api/providers/openai/oauth/status",
+            axum::routing::get(routes::openai_oauth_status),
+        )
+        .route(
+            "/api/providers/openai/oauth/refresh",
+            axum::routing::post(routes::openai_oauth_refresh),
+        )
+        .route(
+            "/api/providers/openai/oauth/logout",
+            axum::routing::delete(routes::openai_oauth_logout),
+        )
+        .route(
             "/api/providers/{name}/key",
             axum::routing::post(routes::set_provider_key).delete(routes::delete_provider_key),
         )

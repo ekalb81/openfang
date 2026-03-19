@@ -153,17 +153,38 @@ fn load_dotenv(path: &Path) -> Result<HashMap<String, String>, std::io::Error> {
         }
         if let Some((key, value)) = line.split_once('=') {
             let key = key.trim();
-            let mut value = value.trim().to_string();
-            // Strip surrounding quotes
-            if (value.starts_with('"') && value.ends_with('"'))
-                || (value.starts_with('\'') && value.ends_with('\''))
-            {
-                value = value[1..value.len() - 1].to_string();
-            }
-            map.insert(key.to_string(), value);
+            let value = value.trim();
+            let parsed = if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+                unescape_quoted_value(&value[1..value.len() - 1], '"')
+            } else if value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2 {
+                unescape_quoted_value(&value[1..value.len() - 1], '\'')
+            } else {
+                value.to_string()
+            };
+            map.insert(key.to_string(), parsed);
         }
     }
     Ok(map)
+}
+
+fn unescape_quoted_value(value: &str, quote: char) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut chars = value.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            match chars.next() {
+                Some(next) if next == quote || next == '\\' => out.push(next),
+                Some(next) => {
+                    out.push('\\');
+                    out.push(next);
+                }
+                None => out.push('\\'),
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// Prompt the user interactively for a secret value.
@@ -208,6 +229,22 @@ SINGLE_QUOTED='single'
         assert_eq!(map.get("SLACK_TOKEN").unwrap(), "xoxb-quoted");
         assert_eq!(map.get("EMPTY").unwrap(), "");
         assert_eq!(map.get("SINGLE_QUOTED").unwrap(), "single");
+    }
+
+    #[test]
+    fn load_dotenv_unescapes_quoted_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let env_path = dir.path().join(".env");
+        std::fs::write(
+            &env_path,
+            "DOUBLE=\"escaped \\\"quote\\\" and \\\\ slash\"\nSINGLE='escaped \\\'quote\\\' and \\\\ slash'\nPLAIN=keep\\path\n",
+        )
+        .unwrap();
+
+        let map = load_dotenv(&env_path).unwrap();
+        assert_eq!(map.get("DOUBLE").unwrap(), "escaped \"quote\" and \\ slash");
+        assert_eq!(map.get("SINGLE").unwrap(), "escaped 'quote' and \\ slash");
+        assert_eq!(map.get("PLAIN").unwrap(), "keep\\path");
     }
 
     #[test]

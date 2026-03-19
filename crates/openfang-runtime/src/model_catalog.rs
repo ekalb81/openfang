@@ -16,6 +16,7 @@ use openfang_types::model_catalog::{
     ZAI_CODING_BASE_URL, ZHIPU_BASE_URL, ZHIPU_CODING_BASE_URL,
 };
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// The model catalog — registry of all known models and providers.
 pub struct ModelCatalog {
@@ -87,8 +88,11 @@ impl ModelCatalog {
             // Secondary: provider-specific fallback auth
             let has_fallback = match provider.id.as_str() {
                 "gemini" => std::env::var("GOOGLE_API_KEY").is_ok(),
-                "codex" => {
-                    std::env::var("OPENAI_API_KEY").is_ok() || read_codex_credential().is_some()
+                "codex" | "openai" => {
+                    std::env::var("OPENAI_API_KEY").is_ok()
+                        || read_codex_credential().is_some()
+                        || read_native_openai_oauth_credential().is_some()
+                        || read_openclaw_openai_oauth_credential().is_some()
                 }
                 // claude-code is handled above (before key_required check)
                 _ => false,
@@ -358,52 +362,219 @@ impl Default for ModelCatalog {
     }
 }
 
-/// Read an OpenAI API key from the Codex CLI credential file.
+/// Current unix timestamp in seconds.
+fn unix_now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
+/// Read and parse JSON from a file path.
+fn read_json_file(path: &PathBuf) -> Option<serde_json::Value> {
+    let content = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+/// Returns true if the credential expiry (unix seconds or ms) is still valid.
+fn expiry_is_valid(expires_at: i64) -> bool {
+    let expires_secs = if expires_at > 10_000_000_000 {
+        expires_at / 1000
+    } else {
+        expires_at
+    };
+    unix_now_secs() < expires_secs
+}
+
+/// Extract a non-empty string from several candidate JSON paths.
+fn first_string_field(parsed: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
+    for path in paths {
+        let mut cur = parsed;
+        let mut ok = true;
+        for segment in *path {
+            cur = match cur.get(*segment) {
+                Some(v) => v,
+                None => {
+                    ok = false;
+                    break;
+                }
+            };
+        }
+        if ok {
+            if let Some(value) = cur.as_str().filter(|s| !s.trim().is_empty()) {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Read an OpenAI credential from the Codex CLI credential file.
 ///
 /// Checks `$CODEX_HOME/auth.json` or `~/.codex/auth.json`.
-/// Returns `Some(api_key)` if the file exists and contains a valid, non-expired token.
-/// Only checks presence — the actual key value is used transiently, never stored.
+/// Returns `Some(token)` if the file exists and contains a valid, non-expired token.
+/// Only checks presence — the actual token value is used transiently, never stored.
 pub fn read_codex_credential() -> Option<String> {
     let codex_home = std::env::var("CODEX_HOME")
-        .map(std::path::PathBuf::from)
+        .map(PathBuf::from)
         .ok()
         .or_else(|| {
             #[cfg(target_os = "windows")]
             {
                 std::env::var("USERPROFILE")
                     .ok()
-                    .map(|h| std::path::PathBuf::from(h).join(".codex"))
+                    .map(|h| PathBuf::from(h).join(".codex"))
             }
             #[cfg(not(target_os = "windows"))]
             {
                 std::env::var("HOME")
                     .ok()
-                    .map(|h| std::path::PathBuf::from(h).join(".codex"))
+                    .map(|h| PathBuf::from(h).join(".codex"))
             }
         })?;
 
     let auth_path = codex_home.join("auth.json");
-    let content = std::fs::read_to_string(&auth_path).ok()?;
-    let parsed: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let parsed = read_json_file(&auth_path)?;
 
-    // Check expiry if present
     if let Some(expires_at) = parsed.get("expires_at").and_then(|v| v.as_i64()) {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-        if now >= expires_at {
-            return None; // Expired
+        if !expiry_is_valid(expires_at) {
+            return None;
         }
     }
 
-    parsed
-        .get("api_key")
-        .or_else(|| parsed.get("token"))
-        .or_else(|| parsed.get("tokens").and_then(|t| t.get("id_token")))
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
+    first_string_field(
+        &parsed,
+        &[
+            &["api_key"],
+            &["token"],
+            &["access_token"],
+            &["tokens", "id_token"],
+            &["tokens", "access_token"],
+        ],
+    )
+}
+
+/// Read a valid access token from OpenFang's native OpenAI OAuth store.
+pub fn read_native_openai_oauth_credential() -> Option<String> {
+    crate::openai_oauth::ensure_access_token_sync(&crate::openai_oauth::default_store_path())
+}
+
+/// Read a valid OpenAI Codex OAuth access token from an OpenClaw auth-profiles store.
+///
+/// Checks `$OPENCLAW_STATE_DIR/agents/<agent>/agent/auth-profiles.json` first, then
+/// `~/.openclaw/agents/<agent>/agent/auth-profiles.json`.
+///
+/// Agent selection:
+/// - `OPENFANG_OPENCLAW_AGENT_ID` if set
+/// - otherwise `main`
+///
+/// Optional profile pinning:
+/// - `OPENFANG_OPENCLAW_PROFILE_ID` to force a specific profile id
+///
+/// The store is managed and refreshed by OpenClaw; OpenFang only reuses the
+/// currently-valid cached access token.
+pub fn read_openclaw_openai_oauth_credential() -> Option<String> {
+    let state_dir = std::env::var("OPENCLAW_STATE_DIR")
+        .map(PathBuf::from)
+        .ok()
+        .or_else(|| {
+            #[cfg(target_os = "windows")]
+            {
+                std::env::var("USERPROFILE")
+                    .ok()
+                    .map(|h| PathBuf::from(h).join(".openclaw"))
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                std::env::var("HOME")
+                    .ok()
+                    .map(|h| PathBuf::from(h).join(".openclaw"))
+            }
+        })?;
+
+    let agent_id = std::env::var("OPENFANG_OPENCLAW_AGENT_ID")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "main".to_string());
+    let preferred_profile_id = std::env::var("OPENFANG_OPENCLAW_PROFILE_ID")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+
+    let auth_path = state_dir
+        .join("agents")
+        .join(agent_id)
+        .join("agent")
+        .join("auth-profiles.json");
+    let parsed = read_json_file(&auth_path)?;
+    let profiles = parsed.get("profiles")?.as_object()?;
+
+    let mut best_access: Option<String> = None;
+    let mut best_expiry = i64::MIN;
+
+    for (profile_id, profile) in profiles.iter() {
+        if let Some(preferred) = preferred_profile_id.as_deref() {
+            if profile_id != preferred {
+                continue;
+            }
+        }
+        let provider = profile.get("provider").and_then(|v| v.as_str()).unwrap_or("");
+        let mode = profile.get("mode").and_then(|v| v.as_str()).unwrap_or("");
+        let profile_type = profile.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        if provider != "openai-codex" {
+            continue;
+        }
+        if mode != "oauth" && profile_type != "oauth" {
+            continue;
+        }
+
+        let Some(expires) = profile
+            .get("expires")
+            .or_else(|| profile.get("expires_at"))
+            .and_then(|v| v.as_i64()) else {
+            continue;
+        };
+        if !expiry_is_valid(expires) {
+            continue;
+        }
+
+        let Some(access) = first_string_field(
+            profile,
+            &[
+                &["access"],
+                &["access_token"],
+                &["token"],
+            ],
+        ) else {
+            continue;
+        };
+
+        let expires_secs = if expires > 10_000_000_000 {
+            expires / 1000
+        } else {
+            expires
+        };
+        if expires_secs > best_expiry {
+            best_expiry = expires_secs;
+            best_access = Some(access);
+        }
+    }
+
+    best_access
+}
+
+/// Resolve the best available OpenAI credential for direct use.
+///
+/// Preference order:
+/// 1. OPENAI_API_KEY
+/// 2. Codex CLI auth.json token
+/// 3. OpenClaw openai-codex OAuth access token from auth-profiles.json
+pub fn read_openai_credential() -> Option<String> {
+    std::env::var("OPENAI_API_KEY")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(read_codex_credential)
+        .or_else(read_native_openai_oauth_credential)
+        .or_else(read_openclaw_openai_oauth_credential)
 }
 
 // ---------------------------------------------------------------------------

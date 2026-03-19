@@ -1,6 +1,6 @@
 //! Text-to-speech engine — synthesize text to audio.
 //!
-//! Auto-cascades through available providers based on configured API keys.
+//! Auto-cascades through available providers based on configured credentials.
 
 use openfang_types::config::TtsConfig;
 
@@ -28,7 +28,7 @@ impl TtsEngine {
 
     /// Detect which TTS provider is available based on environment variables.
     fn detect_provider() -> Option<&'static str> {
-        if std::env::var("OPENAI_API_KEY").is_ok() {
+        if crate::model_catalog::read_openai_credential().is_some() {
             return Some("openai");
         }
         if std::env::var("ELEVENLABS_API_KEY").is_ok() {
@@ -67,7 +67,7 @@ impl TtsEngine {
             .provider
             .as_deref()
             .or_else(|| Self::detect_provider())
-            .ok_or("No TTS provider configured. Set OPENAI_API_KEY or ELEVENLABS_API_KEY")?;
+            .ok_or("No TTS provider configured. Set ELEVENLABS_API_KEY or authenticate OpenAI (API key / OAuth)")?;
 
         match provider {
             "openai" => {
@@ -86,7 +86,9 @@ impl TtsEngine {
         voice_override: Option<&str>,
         format_override: Option<&str>,
     ) -> Result<TtsResult, String> {
-        let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| "OPENAI_API_KEY not set")?;
+        let api_key = crate::model_catalog::read_openai_credential().ok_or(
+            "No OpenAI credential found (OPENAI_API_KEY, Codex CLI, or OpenClaw OAuth)",
+        )?;
 
         // Apply per-request overrides or fall back to config defaults
         let voice = voice_override.unwrap_or(&self.config.openai.voice);

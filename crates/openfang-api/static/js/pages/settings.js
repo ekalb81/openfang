@@ -26,6 +26,7 @@ function settingsPage() {
     providerTesting: {},
     providerTestResults: {},
     copilotOAuth: { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 },
+    openaiOAuth: { working: false, authUrl: '', state: '', redirectUri: '', status: null },
     customProviderName: '',
     customProviderUrl: '',
     customProviderKey: '',
@@ -172,7 +173,8 @@ function settingsPage() {
           this.loadTools(),
           this.loadConfig(),
           this.loadProviders(),
-          this.loadModels()
+          this.loadModels(),
+          this.loadOpenAIOAuthStatus()
         ]);
       } catch(e) {
         this.loadError = e.message || 'Could not load settings.';
@@ -441,6 +443,60 @@ function settingsPage() {
         OpenFangToast.error('Failed to start Copilot login: ' + e.message);
         this.copilotOAuth.polling = false;
       }
+    },
+
+    async loadOpenAIOAuthStatus() {
+      try {
+        this.openaiOAuth.status = await OpenFangAPI.get('/api/providers/openai/oauth/status');
+      } catch (e) {
+        this.openaiOAuth.status = null;
+      }
+    },
+
+    async startOpenAIOAuth() {
+      this.openaiOAuth.working = true;
+      try {
+        var redirectUri = window.location.origin + '/api/providers/openai/oauth/callback';
+        var resp = await OpenFangAPI.post('/api/providers/openai/oauth/start', { redirect_uri: redirectUri });
+        this.openaiOAuth.authUrl = resp.auth_url || '';
+        this.openaiOAuth.state = resp.state || '';
+        this.openaiOAuth.redirectUri = resp.redirect_uri || '';
+        window.open(resp.auth_url, '_blank');
+        OpenFangToast.success('Opened OpenAI sign-in. Complete the browser flow, then the callback endpoint will finish login.');
+        await this.loadOpenAIOAuthStatus();
+        await this.loadProviders();
+      } catch(e) {
+        OpenFangToast.error('Failed to start OpenAI login: ' + e.message);
+      }
+      this.openaiOAuth.working = false;
+    },
+
+    async refreshOpenAIOAuth() {
+      this.openaiOAuth.working = true;
+      try {
+        await OpenFangAPI.post('/api/providers/openai/oauth/refresh', {});
+        OpenFangToast.success('OpenAI OAuth refreshed');
+        await this.loadOpenAIOAuthStatus();
+        await this.loadProviders();
+        await this.loadModels();
+      } catch (e) {
+        OpenFangToast.error('Failed to refresh OpenAI OAuth: ' + e.message);
+      }
+      this.openaiOAuth.working = false;
+    },
+
+    async logoutOpenAIOAuth() {
+      this.openaiOAuth.working = true;
+      try {
+        await OpenFangAPI.del('/api/providers/openai/oauth/logout');
+        OpenFangToast.success('OpenAI OAuth disconnected');
+        await this.loadOpenAIOAuthStatus();
+        await this.loadProviders();
+        await this.loadModels();
+      } catch (e) {
+        OpenFangToast.error('Failed to disconnect OpenAI OAuth: ' + e.message);
+      }
+      this.openaiOAuth.working = false;
     },
 
     pollCopilotOAuth() {

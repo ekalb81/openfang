@@ -297,10 +297,12 @@ pub fn create_driver(config: &DriverConfig) -> Result<Arc<dyn LlmDriver>, LlmErr
         let api_key = config
             .api_key
             .clone()
-            .or_else(|| std::env::var("OPENAI_API_KEY").ok())
-            .or_else(crate::model_catalog::read_codex_credential)
+            .or_else(crate::model_catalog::read_openai_credential)
             .ok_or_else(|| {
-                LlmError::MissingApiKey("Set OPENAI_API_KEY or install Codex CLI".to_string())
+                LlmError::MissingApiKey(
+                    "Set OPENAI_API_KEY, sign in with Codex CLI, or reuse OpenClaw OpenAI OAuth"
+                        .to_string(),
+                )
             })?;
         let base_url = config
             .base_url
