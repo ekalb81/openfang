@@ -416,9 +416,9 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             Some(p) => p,
             None => {
                 return format!(
-                "Unknown pattern '{pattern_str}'. Valid: lifecycle, spawned:<name>, terminated, \
+                    "Unknown pattern '{pattern_str}'. Valid: lifecycle, spawned:<name>, terminated, \
                  system, system:<keyword>, memory, memory:<key>, match:<text>, all"
-            )
+                );
             }
         };
 
@@ -530,7 +530,9 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
                     Ok(id) => {
                         let id_str = id.0.to_string();
                         let id_short = safe_truncate_str(&id_str, 8);
-                        format!("Job [{id_short}] created: '{cron_expr}' -> {agent_name}: \"{message}\"")
+                        format!(
+                            "Job [{id_short}] created: '{cron_expr}' -> {agent_name}: \"{message}\""
+                        )
                     }
                     Err(e) => format!("Failed to create job: {e}"),
                 }
@@ -740,7 +742,9 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             .session_usage_cost(agent_id)
             .map_err(|e| format!("{e}"))?;
         let total = input + output;
-        let mut msg = format!("Session usage:\n  Input: ~{input} tokens\n  Output: ~{output} tokens\n  Total: ~{total} tokens");
+        let mut msg = format!(
+            "Session usage:\n  Input: ~{input} tokens\n  Output: ~{output} tokens\n  Total: ~{total} tokens"
+        );
         if cost > 0.0 {
             msg.push_str(&format!("\n  Estimated cost: ${cost:.4}"));
         }
@@ -1757,6 +1761,46 @@ pub async fn start_channel_bridge_with_config(
     }
 }
 
+fn parse_env_line(line: &str) -> Option<(String, String)> {
+    let (key, raw_value) = line.split_once('=')?;
+    let key = key.trim();
+    if key.is_empty() {
+        return None;
+    }
+
+    let mut value = raw_value.trim().to_string();
+    if value.len() >= 2 {
+        let first = value.chars().next()?;
+        let last = value.chars().last()?;
+        if (first == '"' || first == '\'') && first == last {
+            value = unescape_quoted_value(&value[1..value.len() - 1], first);
+        }
+    }
+
+    Some((key.to_string(), value))
+}
+
+fn unescape_quoted_value(value: &str, quote: char) -> String {
+    let mut unescaped = String::with_capacity(value.len());
+    let mut chars = value.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            if let Some(&next) = chars.peek() {
+                if next == quote || next == '\\' {
+                    unescaped.push(next);
+                    chars.next();
+                    continue;
+                }
+            }
+        }
+
+        unescaped.push(ch);
+    }
+
+    unescaped
+}
+
 /// Reload channels from disk config — stops old bridge, starts new one.
 ///
 /// Reads `config.toml` fresh, rebuilds the channel bridge, and stores it
@@ -1782,20 +1826,10 @@ pub async fn reload_channels_from_disk(
                 if trimmed.is_empty() || trimmed.starts_with('#') {
                     continue;
                 }
-                if let Some(eq_pos) = trimmed.find('=') {
-                    let key = trimmed[..eq_pos].trim();
-                    let mut value = trimmed[eq_pos + 1..].trim().to_string();
-                    if !key.is_empty() {
-                        // Strip matching quotes
-                        if ((value.starts_with('"') && value.ends_with('"'))
-                            || (value.starts_with('\'') && value.ends_with('\'')))
-                            && value.len() >= 2
-                        {
-                            value = value[1..value.len() - 1].to_string();
-                        }
-                        // Always overwrite — the file is the source of truth after dashboard edits
-                        std::env::set_var(key, &value);
-                    }
+
+                if let Some((key, value)) = parse_env_line(trimmed) {
+                    // Always overwrite — the file is the source of truth after dashboard edits
+                    std::env::set_var(key, value);
                 }
             }
             info!("Reloaded secrets.env for channel hot-reload");
@@ -1827,6 +1861,32 @@ pub async fn reload_channels_from_disk(
 
 #[cfg(test)]
 mod tests {
+    use super::parse_env_line;
+
+    #[test]
+    fn parse_env_line_unescapes_double_quoted_values() {
+        let (key, value) = parse_env_line(r#"SLACK_BOT_TOKEN="xoxb-\"quoted\"\\value""#).unwrap();
+
+        assert_eq!(key, "SLACK_BOT_TOKEN");
+        assert_eq!(value, "xoxb-\"quoted\"\\value");
+    }
+
+    #[test]
+    fn parse_env_line_unescapes_single_quoted_values() {
+        let (key, value) = parse_env_line("SIGNAL_TOKEN='it\\'s\\\\fine'").unwrap();
+
+        assert_eq!(key, "SIGNAL_TOKEN");
+        assert_eq!(value, "it's\\fine");
+    }
+
+    #[test]
+    fn parse_env_line_preserves_unquoted_backslashes() {
+        let (key, value) = parse_env_line(r#"PATH=C:\temp\bridge.sock"#).unwrap();
+
+        assert_eq!(key, "PATH");
+        assert_eq!(value, r#"C:\temp\bridge.sock"#);
+    }
+
     #[tokio::test]
     async fn test_bridge_skips_when_no_config() {
         let config = openfang_types::config::KernelConfig::default();
