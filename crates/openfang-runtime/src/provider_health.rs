@@ -53,8 +53,12 @@ pub struct ProbeCache {
     ttl: Duration,
 }
 
+fn normalize_base_url_for_cache(base_url: &str) -> &str {
+    base_url.trim_end_matches('/')
+}
+
 fn cache_key(provider_id: &str, base_url: &str) -> String {
-    format!("{provider_id}:{base_url}")
+    format!("{provider_id}:{}", normalize_base_url_for_cache(base_url))
 }
 
 impl ProbeCache {
@@ -380,6 +384,23 @@ mod tests {
             .get("ollama", "http://localhost:11434/v1")
             .expect("original URL should still be cached");
         assert_eq!(cached.discovered_models, original.discovered_models);
+    }
+
+    #[test]
+    fn test_probe_cache_normalizes_trailing_slashes() {
+        let cache = ProbeCache::new();
+        let result = ProbeResult {
+            reachable: true,
+            latency_ms: 42,
+            discovered_models: vec!["llama3".into()],
+            error: None,
+        };
+        cache.insert("vllm", "http://localhost:8000/v1/", result.clone());
+
+        let cached = cache
+            .get("vllm", "http://localhost:8000/v1")
+            .expect("cache should ignore trailing slash differences");
+        assert_eq!(cached.discovered_models, result.discovered_models);
     }
 
     #[test]
