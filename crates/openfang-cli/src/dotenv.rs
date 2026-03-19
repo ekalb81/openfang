@@ -247,6 +247,34 @@ fn write_env_file(path: &PathBuf, entries: &BTreeMap<String, String>) -> Result<
 mod tests {
     use super::*;
 
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let original = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self { key, original }
+        }
+
+        fn unset(key: &'static str) -> Self {
+            let original = std::env::var(key).ok();
+            std::env::remove_var(key);
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.original {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
     #[test]
     fn test_parse_env_line_simple() {
         let (k, v) = parse_env_line("FOO=bar").unwrap();
@@ -401,5 +429,71 @@ mod tests {
             None => std::env::remove_var("OPENFANG_HOME"),
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_load_env_file_does_not_override_existing_env_or_empty_keys() {
+        let _existing_guard = EnvVarGuard::set("OPENFANG_DOTENV_EXISTING", "from_process");
+        let _loaded_guard = EnvVarGuard::unset("OPENFANG_DOTENV_VALID");
+
+        let dir = std::env::temp_dir().join(format!(
+            "openfang-dotenv-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(".env");
+        std::fs::write(
+            &path,
+            "OPENFANG_DOTENV_EXISTING=from_file\n=ignored\n  =also_ignored\nOPENFANG_DOTENV_VALID=kept\n",
+        )
+        .unwrap();
+
+        load_env_file(Some(path.clone()));
+
+        assert_eq!(
+            std::env::var("OPENFANG_DOTENV_EXISTING").unwrap(),
+            "from_process"
+        );
+        assert_eq!(std::env::var("OPENFANG_DOTENV_VALID").unwrap(), "kept");
+        assert!(std::env::var("").is_err());
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_load_dotenv_preserves_dotenv_precedence_over_secrets() {
+        let original_home = std::env::var_os("OPENFANG_HOME");
+        let key = "OPENFANG_DOTENV_PRECEDENCE";
+        let _guard = EnvVarGuard::unset(key);
+
+        let dir = std::env::temp_dir().join(format!(
+            "openfang-dotenv-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(".env"), format!("{key}=from_dotenv\n")).unwrap();
+        std::fs::write(dir.join("secrets.env"), format!("{key}=from_secrets\n")).unwrap();
+        std::env::set_var("OPENFANG_HOME", &dir);
+
+        load_dotenv();
+
+        assert_eq!(std::env::var(key).unwrap(), "from_dotenv");
+
+        match original_home {
+            Some(value) => std::env::set_var("OPENFANG_HOME", value),
+            None => std::env::remove_var("OPENFANG_HOME"),
+        }
+        let _ = std::fs::remove_file(dir.join(".env"));
+        let _ = std::fs::remove_file(dir.join("secrets.env"));
+        let _ = std::fs::remove_dir(&dir);
     }
 }
