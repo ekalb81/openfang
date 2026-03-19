@@ -473,6 +473,13 @@ fn escape_secret_env_value(value: &str) -> String {
 /// Write or update a key in a secrets.env file.
 /// File format: one `KEY=value` per line. Existing keys are overwritten.
 fn write_secret_env(path: &Path, key: &str, value: &str) -> Result<(), std::io::Error> {
+    if value.contains(['\n', '\r']) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Refusing to write multiline secret_env value for {key}"),
+        ));
+    }
+
     let mut lines: Vec<String> = if path.exists() {
         std::fs::read_to_string(path)?
             .lines()
@@ -4619,6 +4626,19 @@ mod tests {
         assert!(written.contains("TOKEN_SUFFIX=keep\n"));
         assert!(written.contains("TOKEN=\"fresh\"\n"));
         assert!(!written.contains("TOKEN = old\n"));
+    }
+
+    #[test]
+    fn test_write_secret_env_rejects_multiline_values_without_mutating_existing_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("secrets.env");
+        std::fs::write(&path, "TOKEN=old\nTOKEN_SUFFIX=keep\n").unwrap();
+
+        let err = write_secret_env(&path, "TOKEN", "line one\nline two").unwrap_err();
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(written, "TOKEN=old\nTOKEN_SUFFIX=keep\n");
     }
 
     #[test]
