@@ -452,7 +452,7 @@ struct OpenFangNetworkSection {
 
 fn secret_env_line_matches_key(line: &str, key: &str) -> bool {
     line.split_once('=')
-        .map(|(existing_key, _)| existing_key == key)
+        .map(|(existing_key, _)| existing_key.trim() == key)
         .unwrap_or(false)
 }
 
@@ -2053,11 +2053,7 @@ fn convert_agent_from_json(
 
     let api_key_env = {
         let env = default_api_key_env(&provider);
-        if env.is_empty() {
-            None
-        } else {
-            Some(env)
-        }
+        if env.is_empty() { None } else { Some(env) }
     };
 
     // System prompt from identity
@@ -3050,11 +3046,7 @@ fn convert_legacy_agent(
 
     let api_key_env = oc.api_key_env.or_else(|| {
         let env = default_api_key_env(&provider);
-        if env.is_empty() {
-            None
-        } else {
-            Some(env)
-        }
+        if env.is_empty() { None } else { Some(env) }
     });
 
     let mut toml_str = String::new();
@@ -3585,27 +3577,35 @@ mod tests {
 
         // Memory imported
         assert!(report.imported.iter().any(|i| i.kind == ItemKind::Memory));
-        assert!(target
-            .path()
-            .join("agents/coder/imported_memory.md")
-            .exists());
-        assert!(target
-            .path()
-            .join("agents/researcher/imported_memory.md")
-            .exists());
+        assert!(
+            target
+                .path()
+                .join("agents/coder/imported_memory.md")
+                .exists()
+        );
+        assert!(
+            target
+                .path()
+                .join("agents/researcher/imported_memory.md")
+                .exists()
+        );
 
         // Sessions imported
-        assert!(report
-            .imported
-            .iter()
-            .any(|i| i.kind == ItemKind::Session && i.name.contains("session")));
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|i| i.kind == ItemKind::Session && i.name.contains("session"))
+        );
         assert!(target.path().join("imported_sessions/main.jsonl").exists());
 
         // Workspace imported
-        assert!(report
-            .imported
-            .iter()
-            .any(|i| i.kind == ItemKind::Session && i.name.contains("workspace")));
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|i| i.kind == ItemKind::Session && i.name.contains("workspace"))
+        );
 
         // Skipped features reported
         assert!(report.skipped.iter().any(|s| s.name == "cron"));
@@ -3886,14 +3886,18 @@ mod tests {
             .collect();
         assert_eq!(memory_items.len(), 2);
 
-        assert!(target
-            .path()
-            .join("agents/agent1/imported_memory.md")
-            .exists());
-        assert!(target
-            .path()
-            .join("agents/agent2/imported_memory.md")
-            .exists());
+        assert!(
+            target
+                .path()
+                .join("agents/agent1/imported_memory.md")
+                .exists()
+        );
+        assert!(
+            target
+                .path()
+                .join("agents/agent2/imported_memory.md")
+                .exists()
+        );
 
         let c1 = std::fs::read_to_string(target.path().join("agents/agent1/imported_memory.md"))
             .unwrap();
@@ -3945,14 +3949,18 @@ mod tests {
         assert!(report.skipped.iter().any(|s| s.name == "auth-profiles"));
         assert!(report.skipped.iter().any(|s| s.name.contains("skill")));
         assert!(report.skipped.iter().any(|s| s.name == "cron-store.json"));
-        assert!(report
-            .skipped
-            .iter()
-            .any(|s| s.name.contains("memory-search")));
-        assert!(report
-            .skipped
-            .iter()
-            .any(|s| s.name == "auth-profiles.json"));
+        assert!(
+            report
+                .skipped
+                .iter()
+                .any(|s| s.name.contains("memory-search"))
+        );
+        assert!(
+            report
+                .skipped
+                .iter()
+                .any(|s| s.name == "auth-profiles.json")
+        );
         assert!(report.skipped.iter().any(|s| s.name == "session"));
         assert!(report.skipped.iter().any(|s| s.name == "memory"));
     }
@@ -4189,10 +4197,12 @@ mod tests {
 
         assert!(target.path().join("config.toml").exists());
         assert!(target.path().join("agents/coder/agent.toml").exists());
-        assert!(target
-            .path()
-            .join("agents/coder/imported_memory.md")
-            .exists());
+        assert!(
+            target
+                .path()
+                .join("agents/coder/imported_memory.md")
+                .exists()
+        );
 
         let agent_toml =
             std::fs::read_to_string(target.path().join("agents/coder/agent.toml")).unwrap();
@@ -4595,6 +4605,20 @@ mod tests {
         let written = std::fs::read_to_string(&path).unwrap();
         assert!(written.contains("TOKEN_SUFFIX=keep\n"));
         assert!(written.contains("TOKEN=\"value\"\n"));
+    }
+
+    #[test]
+    fn test_write_secret_env_updates_trimmed_existing_key() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("secrets.env");
+        std::fs::write(&path, "TOKEN = old\nTOKEN_SUFFIX=keep\n").unwrap();
+
+        write_secret_env(&path, "TOKEN", "fresh").unwrap();
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("TOKEN_SUFFIX=keep\n"));
+        assert!(written.contains("TOKEN=\"fresh\"\n"));
+        assert!(!written.contains("TOKEN = old\n"));
     }
 
     #[test]

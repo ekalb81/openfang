@@ -1,16 +1,16 @@
 //! Route handlers for the OpenFang API.
 
 use crate::types::*;
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 use dashmap::DashMap;
+use openfang_kernel::OpenFangKernel;
 use openfang_kernel::triggers::{TriggerId, TriggerPattern};
 use openfang_kernel::workflow::{
     ErrorMode, StepAgent, StepMode, Workflow, WorkflowId, WorkflowStep,
 };
-use openfang_kernel::OpenFangKernel;
 use openfang_runtime::kernel_handle::KernelHandle;
 use openfang_runtime::tool_runner::builtin_tool_definitions;
 use openfang_types::agent::{AgentId, AgentIdentity, AgentManifest};
@@ -363,7 +363,11 @@ pub async fn send_message(
     // (not as a separate session message which the LLM may not process).
     let content_blocks = if !req.attachments.is_empty() {
         let image_blocks = resolve_attachments(&req.attachments);
-        if image_blocks.is_empty() { None } else { Some(image_blocks) }
+        if image_blocks.is_empty() {
+            None
+        } else {
+            Some(image_blocks)
+        }
     } else {
         None
     };
@@ -1532,653 +1536,2440 @@ struct ChannelMeta {
 const CHANNEL_REGISTRY: &[ChannelMeta] = &[
     // ── Messaging (12) ──────────────────────────────────────────────
     ChannelMeta {
-        name: "telegram", display_name: "Telegram", icon: "TG",
+        name: "telegram",
+        display_name: "Telegram",
+        icon: "TG",
         description: "Telegram Bot API — long-polling adapter",
-        category: "messaging", difficulty: "Easy", setup_time: "~2 min",
+        category: "messaging",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your bot token from @BotFather",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "bot_token_env", label: "Bot Token", field_type: FieldType::Secret, env_var: Some("TELEGRAM_BOT_TOKEN"), required: true, placeholder: "123456:ABC-DEF...", advanced: false },
-            ChannelField { key: "allowed_users", label: "Allowed User IDs", field_type: FieldType::List, env_var: None, required: false, placeholder: "12345, 67890", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
-            ChannelField { key: "poll_interval_secs", label: "Poll Interval (sec)", field_type: FieldType::Number, env_var: None, required: false, placeholder: "1", advanced: true },
+            ChannelField {
+                key: "bot_token_env",
+                label: "Bot Token",
+                field_type: FieldType::Secret,
+                env_var: Some("TELEGRAM_BOT_TOKEN"),
+                required: true,
+                placeholder: "123456:ABC-DEF...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "allowed_users",
+                label: "Allowed User IDs",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "12345, 67890",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
+            ChannelField {
+                key: "poll_interval_secs",
+                label: "Poll Interval (sec)",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "1",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Open @BotFather on Telegram", "Send /newbot and follow the prompts", "Paste the token below"],
+        setup_steps: &[
+            "Open @BotFather on Telegram",
+            "Send /newbot and follow the prompts",
+            "Paste the token below",
+        ],
         config_template: "[channels.telegram]\nbot_token_env = \"TELEGRAM_BOT_TOKEN\"",
     },
     ChannelMeta {
-        name: "discord", display_name: "Discord", icon: "DC",
+        name: "discord",
+        display_name: "Discord",
+        icon: "DC",
         description: "Discord Gateway bot adapter",
-        category: "messaging", difficulty: "Easy", setup_time: "~3 min",
+        category: "messaging",
+        difficulty: "Easy",
+        setup_time: "~3 min",
         quick_setup: "Paste your bot token from the Discord Developer Portal",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "bot_token_env", label: "Bot Token", field_type: FieldType::Secret, env_var: Some("DISCORD_BOT_TOKEN"), required: true, placeholder: "MTIz...", advanced: false },
-            ChannelField { key: "allowed_guilds", label: "Allowed Guild IDs", field_type: FieldType::List, env_var: None, required: false, placeholder: "123456789, 987654321", advanced: true },
-            ChannelField { key: "allowed_users", label: "Allowed User IDs", field_type: FieldType::List, env_var: None, required: false, placeholder: "123456789, 987654321", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
-            ChannelField { key: "intents", label: "Intents Bitmask", field_type: FieldType::Number, env_var: None, required: false, placeholder: "37376", advanced: true },
+            ChannelField {
+                key: "bot_token_env",
+                label: "Bot Token",
+                field_type: FieldType::Secret,
+                env_var: Some("DISCORD_BOT_TOKEN"),
+                required: true,
+                placeholder: "MTIz...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "allowed_guilds",
+                label: "Allowed Guild IDs",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "123456789, 987654321",
+                advanced: true,
+            },
+            ChannelField {
+                key: "allowed_users",
+                label: "Allowed User IDs",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "123456789, 987654321",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
+            ChannelField {
+                key: "intents",
+                label: "Intents Bitmask",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "37376",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Go to discord.com/developers/applications", "Create a bot and copy the token", "Paste it below"],
+        setup_steps: &[
+            "Go to discord.com/developers/applications",
+            "Create a bot and copy the token",
+            "Paste it below",
+        ],
         config_template: "[channels.discord]\nbot_token_env = \"DISCORD_BOT_TOKEN\"",
     },
     ChannelMeta {
-        name: "slack", display_name: "Slack", icon: "SL",
+        name: "slack",
+        display_name: "Slack",
+        icon: "SL",
         description: "Slack Socket Mode + Events API",
-        category: "messaging", difficulty: "Medium", setup_time: "~5 min",
+        category: "messaging",
+        difficulty: "Medium",
+        setup_time: "~5 min",
         quick_setup: "Paste your App Token and Bot Token from api.slack.com",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "app_token_env", label: "App Token (xapp-)", field_type: FieldType::Secret, env_var: Some("SLACK_APP_TOKEN"), required: true, placeholder: "xapp-1-...", advanced: false },
-            ChannelField { key: "bot_token_env", label: "Bot Token (xoxb-)", field_type: FieldType::Secret, env_var: Some("SLACK_BOT_TOKEN"), required: true, placeholder: "xoxb-...", advanced: false },
-            ChannelField { key: "allowed_channels", label: "Allowed Channel IDs", field_type: FieldType::List, env_var: None, required: false, placeholder: "C01234, C56789", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "app_token_env",
+                label: "App Token (xapp-)",
+                field_type: FieldType::Secret,
+                env_var: Some("SLACK_APP_TOKEN"),
+                required: true,
+                placeholder: "xapp-1-...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "bot_token_env",
+                label: "Bot Token (xoxb-)",
+                field_type: FieldType::Secret,
+                env_var: Some("SLACK_BOT_TOKEN"),
+                required: true,
+                placeholder: "xoxb-...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "allowed_channels",
+                label: "Allowed Channel IDs",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "C01234, C56789",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create app at api.slack.com/apps", "Enable Socket Mode and copy App Token", "Copy Bot Token from OAuth & Permissions"],
+        setup_steps: &[
+            "Create app at api.slack.com/apps",
+            "Enable Socket Mode and copy App Token",
+            "Copy Bot Token from OAuth & Permissions",
+        ],
         config_template: "[channels.slack]\napp_token_env = \"SLACK_APP_TOKEN\"\nbot_token_env = \"SLACK_BOT_TOKEN\"",
     },
     ChannelMeta {
-        name: "whatsapp", display_name: "WhatsApp", icon: "WA",
+        name: "whatsapp",
+        display_name: "WhatsApp",
+        icon: "WA",
         description: "Connect your personal WhatsApp via QR scan",
-        category: "messaging", difficulty: "Easy", setup_time: "~1 min",
+        category: "messaging",
+        difficulty: "Easy",
+        setup_time: "~1 min",
         quick_setup: "Scan QR code with your phone — no developer account needed",
         setup_type: "qr",
         fields: &[
             // Business API fallback fields — all advanced (hidden behind "Use Business API" toggle)
-            ChannelField { key: "access_token_env", label: "Access Token", field_type: FieldType::Secret, env_var: Some("WHATSAPP_ACCESS_TOKEN"), required: false, placeholder: "EAAx...", advanced: true },
-            ChannelField { key: "phone_number_id", label: "Phone Number ID", field_type: FieldType::Text, env_var: None, required: false, placeholder: "1234567890", advanced: true },
-            ChannelField { key: "verify_token_env", label: "Verify Token", field_type: FieldType::Secret, env_var: Some("WHATSAPP_VERIFY_TOKEN"), required: false, placeholder: "my-verify-token", advanced: true },
-            ChannelField { key: "webhook_port", label: "Webhook Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "8443", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "access_token_env",
+                label: "Access Token",
+                field_type: FieldType::Secret,
+                env_var: Some("WHATSAPP_ACCESS_TOKEN"),
+                required: false,
+                placeholder: "EAAx...",
+                advanced: true,
+            },
+            ChannelField {
+                key: "phone_number_id",
+                label: "Phone Number ID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "1234567890",
+                advanced: true,
+            },
+            ChannelField {
+                key: "verify_token_env",
+                label: "Verify Token",
+                field_type: FieldType::Secret,
+                env_var: Some("WHATSAPP_VERIFY_TOKEN"),
+                required: false,
+                placeholder: "my-verify-token",
+                advanced: true,
+            },
+            ChannelField {
+                key: "webhook_port",
+                label: "Webhook Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "8443",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Open WhatsApp on your phone", "Go to Linked Devices", "Tap Link a Device and scan the QR code"],
+        setup_steps: &[
+            "Open WhatsApp on your phone",
+            "Go to Linked Devices",
+            "Tap Link a Device and scan the QR code",
+        ],
         config_template: "[channels.whatsapp]\naccess_token_env = \"WHATSAPP_ACCESS_TOKEN\"\nphone_number_id = \"\"",
     },
     ChannelMeta {
-        name: "signal", display_name: "Signal", icon: "SG",
+        name: "signal",
+        display_name: "Signal",
+        icon: "SG",
         description: "Signal via signal-cli REST API",
-        category: "messaging", difficulty: "Medium", setup_time: "~10 min",
+        category: "messaging",
+        difficulty: "Medium",
+        setup_time: "~10 min",
         quick_setup: "Enter your signal-cli API URL",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "api_url", label: "signal-cli API URL", field_type: FieldType::Text, env_var: None, required: true, placeholder: "http://localhost:8080", advanced: false },
-            ChannelField { key: "phone_number", label: "Phone Number", field_type: FieldType::Text, env_var: None, required: true, placeholder: "+1234567890", advanced: false },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "api_url",
+                label: "signal-cli API URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "http://localhost:8080",
+                advanced: false,
+            },
+            ChannelField {
+                key: "phone_number",
+                label: "Phone Number",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "+1234567890",
+                advanced: false,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Install signal-cli-rest-api", "Enter the API URL and your phone number"],
+        setup_steps: &[
+            "Install signal-cli-rest-api",
+            "Enter the API URL and your phone number",
+        ],
         config_template: "[channels.signal]\napi_url = \"http://localhost:8080\"\nphone_number = \"\"",
     },
     ChannelMeta {
-        name: "matrix", display_name: "Matrix", icon: "MX",
+        name: "matrix",
+        display_name: "Matrix",
+        icon: "MX",
         description: "Matrix/Element bot via homeserver",
-        category: "messaging", difficulty: "Easy", setup_time: "~3 min",
+        category: "messaging",
+        difficulty: "Easy",
+        setup_time: "~3 min",
         quick_setup: "Paste your access token and homeserver URL",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "access_token_env", label: "Access Token", field_type: FieldType::Secret, env_var: Some("MATRIX_ACCESS_TOKEN"), required: true, placeholder: "syt_...", advanced: false },
-            ChannelField { key: "homeserver_url", label: "Homeserver URL", field_type: FieldType::Text, env_var: None, required: true, placeholder: "https://matrix.org", advanced: false },
-            ChannelField { key: "user_id", label: "Bot User ID", field_type: FieldType::Text, env_var: None, required: false, placeholder: "@openfang:matrix.org", advanced: true },
-            ChannelField { key: "allowed_rooms", label: "Allowed Room IDs", field_type: FieldType::List, env_var: None, required: false, placeholder: "!abc:matrix.org", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "access_token_env",
+                label: "Access Token",
+                field_type: FieldType::Secret,
+                env_var: Some("MATRIX_ACCESS_TOKEN"),
+                required: true,
+                placeholder: "syt_...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "homeserver_url",
+                label: "Homeserver URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "https://matrix.org",
+                advanced: false,
+            },
+            ChannelField {
+                key: "user_id",
+                label: "Bot User ID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "@openfang:matrix.org",
+                advanced: true,
+            },
+            ChannelField {
+                key: "allowed_rooms",
+                label: "Allowed Room IDs",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "!abc:matrix.org",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a bot account on your homeserver", "Generate an access token", "Paste token and homeserver URL below"],
+        setup_steps: &[
+            "Create a bot account on your homeserver",
+            "Generate an access token",
+            "Paste token and homeserver URL below",
+        ],
         config_template: "[channels.matrix]\naccess_token_env = \"MATRIX_ACCESS_TOKEN\"\nhomeserver_url = \"https://matrix.org\"",
     },
     ChannelMeta {
-        name: "email", display_name: "Email", icon: "EM",
+        name: "email",
+        display_name: "Email",
+        icon: "EM",
         description: "IMAP/SMTP email adapter",
-        category: "messaging", difficulty: "Easy", setup_time: "~3 min",
+        category: "messaging",
+        difficulty: "Easy",
+        setup_time: "~3 min",
         quick_setup: "Enter your email, password, and server hosts",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "username", label: "Email Address", field_type: FieldType::Text, env_var: None, required: true, placeholder: "bot@example.com", advanced: false },
-            ChannelField { key: "password_env", label: "Password / App Password", field_type: FieldType::Secret, env_var: Some("EMAIL_PASSWORD"), required: true, placeholder: "app-password", advanced: false },
-            ChannelField { key: "imap_host", label: "IMAP Host", field_type: FieldType::Text, env_var: None, required: true, placeholder: "imap.gmail.com", advanced: false },
-            ChannelField { key: "smtp_host", label: "SMTP Host", field_type: FieldType::Text, env_var: None, required: true, placeholder: "smtp.gmail.com", advanced: false },
-            ChannelField { key: "imap_port", label: "IMAP Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "993", advanced: true },
-            ChannelField { key: "smtp_port", label: "SMTP Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "587", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "username",
+                label: "Email Address",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "bot@example.com",
+                advanced: false,
+            },
+            ChannelField {
+                key: "password_env",
+                label: "Password / App Password",
+                field_type: FieldType::Secret,
+                env_var: Some("EMAIL_PASSWORD"),
+                required: true,
+                placeholder: "app-password",
+                advanced: false,
+            },
+            ChannelField {
+                key: "imap_host",
+                label: "IMAP Host",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "imap.gmail.com",
+                advanced: false,
+            },
+            ChannelField {
+                key: "smtp_host",
+                label: "SMTP Host",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "smtp.gmail.com",
+                advanced: false,
+            },
+            ChannelField {
+                key: "imap_port",
+                label: "IMAP Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "993",
+                advanced: true,
+            },
+            ChannelField {
+                key: "smtp_port",
+                label: "SMTP Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "587",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Enable IMAP on your email account", "Generate an app password if using Gmail", "Fill in email, password, and hosts below"],
+        setup_steps: &[
+            "Enable IMAP on your email account",
+            "Generate an app password if using Gmail",
+            "Fill in email, password, and hosts below",
+        ],
         config_template: "[channels.email]\nimap_host = \"imap.gmail.com\"\nsmtp_host = \"smtp.gmail.com\"\npassword_env = \"EMAIL_PASSWORD\"",
     },
     ChannelMeta {
-        name: "line", display_name: "LINE", icon: "LN",
+        name: "line",
+        display_name: "LINE",
+        icon: "LN",
         description: "LINE Messaging API adapter",
-        category: "messaging", difficulty: "Easy", setup_time: "~3 min",
+        category: "messaging",
+        difficulty: "Easy",
+        setup_time: "~3 min",
         quick_setup: "Paste your Channel Secret and Access Token",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "channel_secret_env", label: "Channel Secret", field_type: FieldType::Secret, env_var: Some("LINE_CHANNEL_SECRET"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "access_token_env", label: "Channel Access Token", field_type: FieldType::Secret, env_var: Some("LINE_CHANNEL_ACCESS_TOKEN"), required: true, placeholder: "xyz789...", advanced: false },
-            ChannelField { key: "webhook_port", label: "Webhook Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "8450", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "channel_secret_env",
+                label: "Channel Secret",
+                field_type: FieldType::Secret,
+                env_var: Some("LINE_CHANNEL_SECRET"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "access_token_env",
+                label: "Channel Access Token",
+                field_type: FieldType::Secret,
+                env_var: Some("LINE_CHANNEL_ACCESS_TOKEN"),
+                required: true,
+                placeholder: "xyz789...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "webhook_port",
+                label: "Webhook Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "8450",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a Messaging API channel at LINE Developers", "Copy Channel Secret and Access Token", "Paste them below"],
+        setup_steps: &[
+            "Create a Messaging API channel at LINE Developers",
+            "Copy Channel Secret and Access Token",
+            "Paste them below",
+        ],
         config_template: "[channels.line]\nchannel_secret_env = \"LINE_CHANNEL_SECRET\"\naccess_token_env = \"LINE_CHANNEL_ACCESS_TOKEN\"",
     },
     ChannelMeta {
-        name: "viber", display_name: "Viber", icon: "VB",
+        name: "viber",
+        display_name: "Viber",
+        icon: "VB",
         description: "Viber Bot API adapter",
-        category: "messaging", difficulty: "Easy", setup_time: "~2 min",
+        category: "messaging",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your auth token from partners.viber.com",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "auth_token_env", label: "Auth Token", field_type: FieldType::Secret, env_var: Some("VIBER_AUTH_TOKEN"), required: true, placeholder: "4dc...", advanced: false },
-            ChannelField { key: "webhook_url", label: "Webhook URL", field_type: FieldType::Text, env_var: None, required: false, placeholder: "https://your-domain.com/viber", advanced: true },
-            ChannelField { key: "webhook_port", label: "Webhook Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "8451", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "auth_token_env",
+                label: "Auth Token",
+                field_type: FieldType::Secret,
+                env_var: Some("VIBER_AUTH_TOKEN"),
+                required: true,
+                placeholder: "4dc...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "webhook_url",
+                label: "Webhook URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "https://your-domain.com/viber",
+                advanced: true,
+            },
+            ChannelField {
+                key: "webhook_port",
+                label: "Webhook Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "8451",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a bot at partners.viber.com", "Copy the auth token", "Paste it below"],
+        setup_steps: &[
+            "Create a bot at partners.viber.com",
+            "Copy the auth token",
+            "Paste it below",
+        ],
         config_template: "[channels.viber]\nauth_token_env = \"VIBER_AUTH_TOKEN\"",
     },
     ChannelMeta {
-        name: "messenger", display_name: "Messenger", icon: "FB",
+        name: "messenger",
+        display_name: "Messenger",
+        icon: "FB",
         description: "Facebook Messenger Platform adapter",
-        category: "messaging", difficulty: "Medium", setup_time: "~10 min",
+        category: "messaging",
+        difficulty: "Medium",
+        setup_time: "~10 min",
         quick_setup: "Paste your Page Access Token from developers.facebook.com",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "page_token_env", label: "Page Access Token", field_type: FieldType::Secret, env_var: Some("MESSENGER_PAGE_TOKEN"), required: true, placeholder: "EAAx...", advanced: false },
-            ChannelField { key: "verify_token_env", label: "Verify Token", field_type: FieldType::Secret, env_var: Some("MESSENGER_VERIFY_TOKEN"), required: false, placeholder: "my-verify-token", advanced: true },
-            ChannelField { key: "webhook_port", label: "Webhook Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "8452", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "page_token_env",
+                label: "Page Access Token",
+                field_type: FieldType::Secret,
+                env_var: Some("MESSENGER_PAGE_TOKEN"),
+                required: true,
+                placeholder: "EAAx...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "verify_token_env",
+                label: "Verify Token",
+                field_type: FieldType::Secret,
+                env_var: Some("MESSENGER_VERIFY_TOKEN"),
+                required: false,
+                placeholder: "my-verify-token",
+                advanced: true,
+            },
+            ChannelField {
+                key: "webhook_port",
+                label: "Webhook Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "8452",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a Facebook App and add Messenger", "Generate a Page Access Token", "Paste it below"],
+        setup_steps: &[
+            "Create a Facebook App and add Messenger",
+            "Generate a Page Access Token",
+            "Paste it below",
+        ],
         config_template: "[channels.messenger]\npage_token_env = \"MESSENGER_PAGE_TOKEN\"",
     },
     ChannelMeta {
-        name: "threema", display_name: "Threema", icon: "3M",
+        name: "threema",
+        display_name: "Threema",
+        icon: "3M",
         description: "Threema Gateway adapter",
-        category: "messaging", difficulty: "Easy", setup_time: "~3 min",
+        category: "messaging",
+        difficulty: "Easy",
+        setup_time: "~3 min",
         quick_setup: "Paste your Gateway ID and API secret",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "secret_env", label: "API Secret", field_type: FieldType::Secret, env_var: Some("THREEMA_SECRET"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "threema_id", label: "Gateway ID", field_type: FieldType::Text, env_var: None, required: true, placeholder: "*MYID01", advanced: false },
-            ChannelField { key: "webhook_port", label: "Webhook Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "8454", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "secret_env",
+                label: "API Secret",
+                field_type: FieldType::Secret,
+                env_var: Some("THREEMA_SECRET"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "threema_id",
+                label: "Gateway ID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "*MYID01",
+                advanced: false,
+            },
+            ChannelField {
+                key: "webhook_port",
+                label: "Webhook Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "8454",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Register at gateway.threema.ch", "Copy your ID and API secret", "Paste them below"],
+        setup_steps: &[
+            "Register at gateway.threema.ch",
+            "Copy your ID and API secret",
+            "Paste them below",
+        ],
         config_template: "[channels.threema]\nthreema_id = \"\"\nsecret_env = \"THREEMA_SECRET\"",
     },
     ChannelMeta {
-        name: "keybase", display_name: "Keybase", icon: "KB",
+        name: "keybase",
+        display_name: "Keybase",
+        icon: "KB",
         description: "Keybase chat bot adapter",
-        category: "messaging", difficulty: "Easy", setup_time: "~3 min",
+        category: "messaging",
+        difficulty: "Easy",
+        setup_time: "~3 min",
         quick_setup: "Enter your username and paper key",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "username", label: "Username", field_type: FieldType::Text, env_var: None, required: true, placeholder: "openfang_bot", advanced: false },
-            ChannelField { key: "paperkey_env", label: "Paper Key", field_type: FieldType::Secret, env_var: Some("KEYBASE_PAPERKEY"), required: true, placeholder: "word1 word2 word3...", advanced: false },
-            ChannelField { key: "allowed_teams", label: "Allowed Teams", field_type: FieldType::List, env_var: None, required: false, placeholder: "team1, team2", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "username",
+                label: "Username",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "openfang_bot",
+                advanced: false,
+            },
+            ChannelField {
+                key: "paperkey_env",
+                label: "Paper Key",
+                field_type: FieldType::Secret,
+                env_var: Some("KEYBASE_PAPERKEY"),
+                required: true,
+                placeholder: "word1 word2 word3...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "allowed_teams",
+                label: "Allowed Teams",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "team1, team2",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a Keybase bot account", "Generate a paper key", "Enter username and paper key below"],
+        setup_steps: &[
+            "Create a Keybase bot account",
+            "Generate a paper key",
+            "Enter username and paper key below",
+        ],
         config_template: "[channels.keybase]\nusername = \"\"\npaperkey_env = \"KEYBASE_PAPERKEY\"",
     },
     // ── Social (5) ──────────────────────────────────────────────────
     ChannelMeta {
-        name: "reddit", display_name: "Reddit", icon: "RD",
+        name: "reddit",
+        display_name: "Reddit",
+        icon: "RD",
         description: "Reddit API bot adapter",
-        category: "social", difficulty: "Medium", setup_time: "~5 min",
+        category: "social",
+        difficulty: "Medium",
+        setup_time: "~5 min",
         quick_setup: "Paste your Client ID, Secret, and bot credentials",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "client_id", label: "Client ID", field_type: FieldType::Text, env_var: None, required: true, placeholder: "abc123def", advanced: false },
-            ChannelField { key: "client_secret_env", label: "Client Secret", field_type: FieldType::Secret, env_var: Some("REDDIT_CLIENT_SECRET"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "username", label: "Bot Username", field_type: FieldType::Text, env_var: None, required: true, placeholder: "openfang_bot", advanced: false },
-            ChannelField { key: "password_env", label: "Bot Password", field_type: FieldType::Secret, env_var: Some("REDDIT_PASSWORD"), required: true, placeholder: "password", advanced: false },
-            ChannelField { key: "subreddits", label: "Subreddits", field_type: FieldType::List, env_var: None, required: false, placeholder: "openfang, rust", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "client_id",
+                label: "Client ID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "abc123def",
+                advanced: false,
+            },
+            ChannelField {
+                key: "client_secret_env",
+                label: "Client Secret",
+                field_type: FieldType::Secret,
+                env_var: Some("REDDIT_CLIENT_SECRET"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "username",
+                label: "Bot Username",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "openfang_bot",
+                advanced: false,
+            },
+            ChannelField {
+                key: "password_env",
+                label: "Bot Password",
+                field_type: FieldType::Secret,
+                env_var: Some("REDDIT_PASSWORD"),
+                required: true,
+                placeholder: "password",
+                advanced: false,
+            },
+            ChannelField {
+                key: "subreddits",
+                label: "Subreddits",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "openfang, rust",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a Reddit app at reddit.com/prefs/apps (script type)", "Copy Client ID and Secret", "Enter bot credentials below"],
+        setup_steps: &[
+            "Create a Reddit app at reddit.com/prefs/apps (script type)",
+            "Copy Client ID and Secret",
+            "Enter bot credentials below",
+        ],
         config_template: "[channels.reddit]\nclient_id = \"\"\nclient_secret_env = \"REDDIT_CLIENT_SECRET\"\nusername = \"\"\npassword_env = \"REDDIT_PASSWORD\"",
     },
     ChannelMeta {
-        name: "mastodon", display_name: "Mastodon", icon: "MA",
+        name: "mastodon",
+        display_name: "Mastodon",
+        icon: "MA",
         description: "Mastodon Streaming API adapter",
-        category: "social", difficulty: "Easy", setup_time: "~2 min",
+        category: "social",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your access token from Settings > Development",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "access_token_env", label: "Access Token", field_type: FieldType::Secret, env_var: Some("MASTODON_ACCESS_TOKEN"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "instance_url", label: "Instance URL", field_type: FieldType::Text, env_var: None, required: true, placeholder: "https://mastodon.social", advanced: false },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "access_token_env",
+                label: "Access Token",
+                field_type: FieldType::Secret,
+                env_var: Some("MASTODON_ACCESS_TOKEN"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "instance_url",
+                label: "Instance URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "https://mastodon.social",
+                advanced: false,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Go to Settings > Development on your instance", "Create an app and copy the token", "Paste it below"],
+        setup_steps: &[
+            "Go to Settings > Development on your instance",
+            "Create an app and copy the token",
+            "Paste it below",
+        ],
         config_template: "[channels.mastodon]\ninstance_url = \"https://mastodon.social\"\naccess_token_env = \"MASTODON_ACCESS_TOKEN\"",
     },
     ChannelMeta {
-        name: "bluesky", display_name: "Bluesky", icon: "BS",
+        name: "bluesky",
+        display_name: "Bluesky",
+        icon: "BS",
         description: "Bluesky/AT Protocol adapter",
-        category: "social", difficulty: "Easy", setup_time: "~1 min",
+        category: "social",
+        difficulty: "Easy",
+        setup_time: "~1 min",
         quick_setup: "Enter your handle and app password",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "identifier", label: "Handle", field_type: FieldType::Text, env_var: None, required: true, placeholder: "user.bsky.social", advanced: false },
-            ChannelField { key: "app_password_env", label: "App Password", field_type: FieldType::Secret, env_var: Some("BLUESKY_APP_PASSWORD"), required: true, placeholder: "xxxx-xxxx-xxxx-xxxx", advanced: false },
-            ChannelField { key: "service_url", label: "PDS URL", field_type: FieldType::Text, env_var: None, required: false, placeholder: "https://bsky.social", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "identifier",
+                label: "Handle",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "user.bsky.social",
+                advanced: false,
+            },
+            ChannelField {
+                key: "app_password_env",
+                label: "App Password",
+                field_type: FieldType::Secret,
+                env_var: Some("BLUESKY_APP_PASSWORD"),
+                required: true,
+                placeholder: "xxxx-xxxx-xxxx-xxxx",
+                advanced: false,
+            },
+            ChannelField {
+                key: "service_url",
+                label: "PDS URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "https://bsky.social",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Go to Settings > App Passwords in Bluesky", "Create an app password", "Enter handle and password below"],
+        setup_steps: &[
+            "Go to Settings > App Passwords in Bluesky",
+            "Create an app password",
+            "Enter handle and password below",
+        ],
         config_template: "[channels.bluesky]\nidentifier = \"\"\napp_password_env = \"BLUESKY_APP_PASSWORD\"",
     },
     ChannelMeta {
-        name: "linkedin", display_name: "LinkedIn", icon: "LI",
+        name: "linkedin",
+        display_name: "LinkedIn",
+        icon: "LI",
         description: "LinkedIn Messaging API adapter",
-        category: "social", difficulty: "Hard", setup_time: "~15 min",
+        category: "social",
+        difficulty: "Hard",
+        setup_time: "~15 min",
         quick_setup: "Paste your OAuth2 access token and Organization ID",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "access_token_env", label: "Access Token", field_type: FieldType::Secret, env_var: Some("LINKEDIN_ACCESS_TOKEN"), required: true, placeholder: "AQV...", advanced: false },
-            ChannelField { key: "organization_id", label: "Organization ID", field_type: FieldType::Text, env_var: None, required: true, placeholder: "12345678", advanced: false },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "access_token_env",
+                label: "Access Token",
+                field_type: FieldType::Secret,
+                env_var: Some("LINKEDIN_ACCESS_TOKEN"),
+                required: true,
+                placeholder: "AQV...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "organization_id",
+                label: "Organization ID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "12345678",
+                advanced: false,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a LinkedIn App at linkedin.com/developers", "Generate an OAuth2 token", "Enter token and org ID below"],
+        setup_steps: &[
+            "Create a LinkedIn App at linkedin.com/developers",
+            "Generate an OAuth2 token",
+            "Enter token and org ID below",
+        ],
         config_template: "[channels.linkedin]\naccess_token_env = \"LINKEDIN_ACCESS_TOKEN\"\norganization_id = \"\"",
     },
     ChannelMeta {
-        name: "nostr", display_name: "Nostr", icon: "NS",
+        name: "nostr",
+        display_name: "Nostr",
+        icon: "NS",
         description: "Nostr relay protocol adapter",
-        category: "social", difficulty: "Easy", setup_time: "~2 min",
+        category: "social",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your private key (nsec or hex)",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "private_key_env", label: "Private Key", field_type: FieldType::Secret, env_var: Some("NOSTR_PRIVATE_KEY"), required: true, placeholder: "nsec1...", advanced: false },
-            ChannelField { key: "relays", label: "Relay URLs", field_type: FieldType::List, env_var: None, required: false, placeholder: "wss://relay.damus.io", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "private_key_env",
+                label: "Private Key",
+                field_type: FieldType::Secret,
+                env_var: Some("NOSTR_PRIVATE_KEY"),
+                required: true,
+                placeholder: "nsec1...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "relays",
+                label: "Relay URLs",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "wss://relay.damus.io",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Generate or use an existing Nostr keypair", "Paste your private key below"],
+        setup_steps: &[
+            "Generate or use an existing Nostr keypair",
+            "Paste your private key below",
+        ],
         config_template: "[channels.nostr]\nprivate_key_env = \"NOSTR_PRIVATE_KEY\"",
     },
     // ── Enterprise (10) ─────────────────────────────────────────────
     ChannelMeta {
-        name: "teams", display_name: "Microsoft Teams", icon: "MS",
+        name: "teams",
+        display_name: "Microsoft Teams",
+        icon: "MS",
         description: "Teams Bot Framework adapter",
-        category: "enterprise", difficulty: "Medium", setup_time: "~10 min",
+        category: "enterprise",
+        difficulty: "Medium",
+        setup_time: "~10 min",
         quick_setup: "Paste your Azure Bot App ID and Password",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "app_id", label: "App ID", field_type: FieldType::Text, env_var: None, required: true, placeholder: "00000000-0000-...", advanced: false },
-            ChannelField { key: "app_password_env", label: "App Password", field_type: FieldType::Secret, env_var: Some("TEAMS_APP_PASSWORD"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "webhook_port", label: "Webhook Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "3978", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "app_id",
+                label: "App ID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "00000000-0000-...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "app_password_env",
+                label: "App Password",
+                field_type: FieldType::Secret,
+                env_var: Some("TEAMS_APP_PASSWORD"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "webhook_port",
+                label: "Webhook Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "3978",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create an Azure Bot registration", "Copy App ID and generate a password", "Paste them below"],
+        setup_steps: &[
+            "Create an Azure Bot registration",
+            "Copy App ID and generate a password",
+            "Paste them below",
+        ],
         config_template: "[channels.teams]\napp_id = \"\"\napp_password_env = \"TEAMS_APP_PASSWORD\"",
     },
     ChannelMeta {
-        name: "mattermost", display_name: "Mattermost", icon: "MM",
+        name: "mattermost",
+        display_name: "Mattermost",
+        icon: "MM",
         description: "Mattermost WebSocket adapter",
-        category: "enterprise", difficulty: "Easy", setup_time: "~2 min",
+        category: "enterprise",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your bot token and server URL",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "server_url", label: "Server URL", field_type: FieldType::Text, env_var: None, required: true, placeholder: "https://mattermost.example.com", advanced: false },
-            ChannelField { key: "token_env", label: "Bot Token", field_type: FieldType::Secret, env_var: Some("MATTERMOST_TOKEN"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "allowed_channels", label: "Allowed Channels", field_type: FieldType::List, env_var: None, required: false, placeholder: "abc123, def456", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "server_url",
+                label: "Server URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "https://mattermost.example.com",
+                advanced: false,
+            },
+            ChannelField {
+                key: "token_env",
+                label: "Bot Token",
+                field_type: FieldType::Secret,
+                env_var: Some("MATTERMOST_TOKEN"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "allowed_channels",
+                label: "Allowed Channels",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "abc123, def456",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a bot in System Console > Bot Accounts", "Copy the token", "Enter server URL and token below"],
+        setup_steps: &[
+            "Create a bot in System Console > Bot Accounts",
+            "Copy the token",
+            "Enter server URL and token below",
+        ],
         config_template: "[channels.mattermost]\nserver_url = \"\"\ntoken_env = \"MATTERMOST_TOKEN\"",
     },
     ChannelMeta {
-        name: "google_chat", display_name: "Google Chat", icon: "GC",
+        name: "google_chat",
+        display_name: "Google Chat",
+        icon: "GC",
         description: "Google Chat service account adapter",
-        category: "enterprise", difficulty: "Hard", setup_time: "~15 min",
+        category: "enterprise",
+        difficulty: "Hard",
+        setup_time: "~15 min",
         quick_setup: "Enter path to your service account JSON key",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "service_account_env", label: "Service Account JSON", field_type: FieldType::Secret, env_var: Some("GOOGLE_CHAT_SERVICE_ACCOUNT"), required: true, placeholder: "/path/to/key.json", advanced: false },
-            ChannelField { key: "space_ids", label: "Space IDs", field_type: FieldType::List, env_var: None, required: false, placeholder: "spaces/AAAA", advanced: true },
-            ChannelField { key: "webhook_port", label: "Webhook Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "8444", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "service_account_env",
+                label: "Service Account JSON",
+                field_type: FieldType::Secret,
+                env_var: Some("GOOGLE_CHAT_SERVICE_ACCOUNT"),
+                required: true,
+                placeholder: "/path/to/key.json",
+                advanced: false,
+            },
+            ChannelField {
+                key: "space_ids",
+                label: "Space IDs",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "spaces/AAAA",
+                advanced: true,
+            },
+            ChannelField {
+                key: "webhook_port",
+                label: "Webhook Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "8444",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a Google Cloud project with Chat API", "Download service account JSON key", "Enter the path below"],
+        setup_steps: &[
+            "Create a Google Cloud project with Chat API",
+            "Download service account JSON key",
+            "Enter the path below",
+        ],
         config_template: "[channels.google_chat]\nservice_account_env = \"GOOGLE_CHAT_SERVICE_ACCOUNT\"",
     },
     ChannelMeta {
-        name: "webex", display_name: "Webex", icon: "WX",
+        name: "webex",
+        display_name: "Webex",
+        icon: "WX",
         description: "Cisco Webex bot adapter",
-        category: "enterprise", difficulty: "Easy", setup_time: "~2 min",
+        category: "enterprise",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your bot token from developer.webex.com",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "bot_token_env", label: "Bot Token", field_type: FieldType::Secret, env_var: Some("WEBEX_BOT_TOKEN"), required: true, placeholder: "NjI...", advanced: false },
-            ChannelField { key: "allowed_rooms", label: "Allowed Rooms", field_type: FieldType::List, env_var: None, required: false, placeholder: "Y2lz...", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "bot_token_env",
+                label: "Bot Token",
+                field_type: FieldType::Secret,
+                env_var: Some("WEBEX_BOT_TOKEN"),
+                required: true,
+                placeholder: "NjI...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "allowed_rooms",
+                label: "Allowed Rooms",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "Y2lz...",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a bot at developer.webex.com", "Copy the token", "Paste it below"],
+        setup_steps: &[
+            "Create a bot at developer.webex.com",
+            "Copy the token",
+            "Paste it below",
+        ],
         config_template: "[channels.webex]\nbot_token_env = \"WEBEX_BOT_TOKEN\"",
     },
     ChannelMeta {
-        name: "feishu", display_name: "Feishu/Lark", icon: "FS",
+        name: "feishu",
+        display_name: "Feishu/Lark",
+        icon: "FS",
         description: "Feishu/Lark Open Platform adapter (supports China & International)",
-        category: "enterprise", difficulty: "Easy", setup_time: "~3 min",
+        category: "enterprise",
+        difficulty: "Easy",
+        setup_time: "~3 min",
         quick_setup: "Paste your App ID and App Secret",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "app_id", label: "App ID", field_type: FieldType::Text, env_var: None, required: true, placeholder: "cli_abc123", advanced: false },
-            ChannelField { key: "app_secret_env", label: "App Secret", field_type: FieldType::Secret, env_var: Some("FEISHU_APP_SECRET"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "region", label: "Region", field_type: FieldType::Text, env_var: None, required: false, placeholder: "cn or intl", advanced: false },
-            ChannelField { key: "webhook_port", label: "Webhook Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "8453", advanced: true },
-            ChannelField { key: "webhook_path", label: "Webhook Path", field_type: FieldType::Text, env_var: None, required: false, placeholder: "/feishu/webhook", advanced: true },
-            ChannelField { key: "verification_token", label: "Verification Token", field_type: FieldType::Text, env_var: None, required: false, placeholder: "verify-token", advanced: true },
-            ChannelField { key: "encrypt_key_env", label: "Encrypt Key", field_type: FieldType::Secret, env_var: Some("FEISHU_ENCRYPT_KEY"), required: false, placeholder: "encrypt-key", advanced: true },
-            ChannelField { key: "bot_names", label: "Bot Names", field_type: FieldType::List, env_var: None, required: false, placeholder: "MyBot, Assistant", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "app_id",
+                label: "App ID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "cli_abc123",
+                advanced: false,
+            },
+            ChannelField {
+                key: "app_secret_env",
+                label: "App Secret",
+                field_type: FieldType::Secret,
+                env_var: Some("FEISHU_APP_SECRET"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "region",
+                label: "Region",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "cn or intl",
+                advanced: false,
+            },
+            ChannelField {
+                key: "webhook_port",
+                label: "Webhook Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "8453",
+                advanced: true,
+            },
+            ChannelField {
+                key: "webhook_path",
+                label: "Webhook Path",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "/feishu/webhook",
+                advanced: true,
+            },
+            ChannelField {
+                key: "verification_token",
+                label: "Verification Token",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "verify-token",
+                advanced: true,
+            },
+            ChannelField {
+                key: "encrypt_key_env",
+                label: "Encrypt Key",
+                field_type: FieldType::Secret,
+                env_var: Some("FEISHU_ENCRYPT_KEY"),
+                required: false,
+                placeholder: "encrypt-key",
+                advanced: true,
+            },
+            ChannelField {
+                key: "bot_names",
+                label: "Bot Names",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "MyBot, Assistant",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create an app at open.feishu.cn (CN) or open.larksuite.com (International)", "Copy App ID and Secret", "Set region: cn (Feishu) or intl (Lark)"],
+        setup_steps: &[
+            "Create an app at open.feishu.cn (CN) or open.larksuite.com (International)",
+            "Copy App ID and Secret",
+            "Set region: cn (Feishu) or intl (Lark)",
+        ],
         config_template: "[channels.feishu]\napp_id = \"\"\napp_secret_env = \"FEISHU_APP_SECRET\"\nregion = \"cn\"",
     },
     ChannelMeta {
-        name: "dingtalk", display_name: "DingTalk", icon: "DT",
+        name: "dingtalk",
+        display_name: "DingTalk",
+        icon: "DT",
         description: "DingTalk Robot API adapter",
-        category: "enterprise", difficulty: "Easy", setup_time: "~3 min",
+        category: "enterprise",
+        difficulty: "Easy",
+        setup_time: "~3 min",
         quick_setup: "Paste your webhook token and signing secret",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "access_token_env", label: "Access Token", field_type: FieldType::Secret, env_var: Some("DINGTALK_ACCESS_TOKEN"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "secret_env", label: "Signing Secret", field_type: FieldType::Secret, env_var: Some("DINGTALK_SECRET"), required: true, placeholder: "SEC...", advanced: false },
-            ChannelField { key: "webhook_port", label: "Webhook Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "8457", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "access_token_env",
+                label: "Access Token",
+                field_type: FieldType::Secret,
+                env_var: Some("DINGTALK_ACCESS_TOKEN"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "secret_env",
+                label: "Signing Secret",
+                field_type: FieldType::Secret,
+                env_var: Some("DINGTALK_SECRET"),
+                required: true,
+                placeholder: "SEC...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "webhook_port",
+                label: "Webhook Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "8457",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a robot in your DingTalk group", "Copy the token and signing secret", "Paste them below"],
+        setup_steps: &[
+            "Create a robot in your DingTalk group",
+            "Copy the token and signing secret",
+            "Paste them below",
+        ],
         config_template: "[channels.dingtalk]\naccess_token_env = \"DINGTALK_ACCESS_TOKEN\"\nsecret_env = \"DINGTALK_SECRET\"",
     },
     ChannelMeta {
-        name: "dingtalk_stream", display_name: "DingTalk Stream", icon: "DS",
+        name: "dingtalk_stream",
+        display_name: "DingTalk Stream",
+        icon: "DS",
         description: "DingTalk Stream Mode (WebSocket long-connection)",
-        category: "enterprise", difficulty: "Easy", setup_time: "~5 min",
+        category: "enterprise",
+        difficulty: "Easy",
+        setup_time: "~5 min",
         quick_setup: "Create an Enterprise Internal App with Stream Mode enabled",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "app_key_env", label: "App Key", field_type: FieldType::Secret, env_var: Some("DINGTALK_APP_KEY"), required: true, placeholder: "ding...", advanced: false },
-            ChannelField { key: "app_secret_env", label: "App Secret", field_type: FieldType::Secret, env_var: Some("DINGTALK_APP_SECRET"), required: true, placeholder: "uAn4...", advanced: false },
-            ChannelField { key: "robot_code_env", label: "Robot Code", field_type: FieldType::Text, env_var: Some("DINGTALK_ROBOT_CODE"), required: false, placeholder: "ding... (same as App Key)", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "app_key_env",
+                label: "App Key",
+                field_type: FieldType::Secret,
+                env_var: Some("DINGTALK_APP_KEY"),
+                required: true,
+                placeholder: "ding...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "app_secret_env",
+                label: "App Secret",
+                field_type: FieldType::Secret,
+                env_var: Some("DINGTALK_APP_SECRET"),
+                required: true,
+                placeholder: "uAn4...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "robot_code_env",
+                label: "Robot Code",
+                field_type: FieldType::Text,
+                env_var: Some("DINGTALK_ROBOT_CODE"),
+                required: false,
+                placeholder: "ding... (same as App Key)",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create an Enterprise Internal App in DingTalk Open Platform", "Enable Stream Mode in the app settings", "Add robot capability and configure permissions", "Copy App Key and App Secret below"],
+        setup_steps: &[
+            "Create an Enterprise Internal App in DingTalk Open Platform",
+            "Enable Stream Mode in the app settings",
+            "Add robot capability and configure permissions",
+            "Copy App Key and App Secret below",
+        ],
         config_template: "[channels.dingtalk_stream]\napp_key_env = \"DINGTALK_APP_KEY\"\napp_secret_env = \"DINGTALK_APP_SECRET\"",
     },
     ChannelMeta {
-        name: "pumble", display_name: "Pumble", icon: "PB",
+        name: "pumble",
+        display_name: "Pumble",
+        icon: "PB",
         description: "Pumble bot adapter",
-        category: "enterprise", difficulty: "Easy", setup_time: "~1 min",
+        category: "enterprise",
+        difficulty: "Easy",
+        setup_time: "~1 min",
         quick_setup: "Paste your bot token",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "bot_token_env", label: "Bot Token", field_type: FieldType::Secret, env_var: Some("PUMBLE_BOT_TOKEN"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "webhook_port", label: "Webhook Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "8455", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "bot_token_env",
+                label: "Bot Token",
+                field_type: FieldType::Secret,
+                env_var: Some("PUMBLE_BOT_TOKEN"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "webhook_port",
+                label: "Webhook Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "8455",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a bot in Pumble Integrations", "Copy the token", "Paste it below"],
+        setup_steps: &[
+            "Create a bot in Pumble Integrations",
+            "Copy the token",
+            "Paste it below",
+        ],
         config_template: "[channels.pumble]\nbot_token_env = \"PUMBLE_BOT_TOKEN\"",
     },
     ChannelMeta {
-        name: "flock", display_name: "Flock", icon: "FL",
+        name: "flock",
+        display_name: "Flock",
+        icon: "FL",
         description: "Flock bot adapter",
-        category: "enterprise", difficulty: "Easy", setup_time: "~1 min",
+        category: "enterprise",
+        difficulty: "Easy",
+        setup_time: "~1 min",
         quick_setup: "Paste your bot token",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "bot_token_env", label: "Bot Token", field_type: FieldType::Secret, env_var: Some("FLOCK_BOT_TOKEN"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "webhook_port", label: "Webhook Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "8456", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "bot_token_env",
+                label: "Bot Token",
+                field_type: FieldType::Secret,
+                env_var: Some("FLOCK_BOT_TOKEN"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "webhook_port",
+                label: "Webhook Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "8456",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Build an app in Flock App Store", "Copy the bot token", "Paste it below"],
+        setup_steps: &[
+            "Build an app in Flock App Store",
+            "Copy the bot token",
+            "Paste it below",
+        ],
         config_template: "[channels.flock]\nbot_token_env = \"FLOCK_BOT_TOKEN\"",
     },
     ChannelMeta {
-        name: "twist", display_name: "Twist", icon: "TW",
+        name: "twist",
+        display_name: "Twist",
+        icon: "TW",
         description: "Twist API v3 adapter",
-        category: "enterprise", difficulty: "Easy", setup_time: "~2 min",
+        category: "enterprise",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your API token and workspace ID",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "token_env", label: "API Token", field_type: FieldType::Secret, env_var: Some("TWIST_TOKEN"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "workspace_id", label: "Workspace ID", field_type: FieldType::Text, env_var: None, required: true, placeholder: "12345", advanced: false },
-            ChannelField { key: "allowed_channels", label: "Channel IDs", field_type: FieldType::List, env_var: None, required: false, placeholder: "123, 456", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "token_env",
+                label: "API Token",
+                field_type: FieldType::Secret,
+                env_var: Some("TWIST_TOKEN"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "workspace_id",
+                label: "Workspace ID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "12345",
+                advanced: false,
+            },
+            ChannelField {
+                key: "allowed_channels",
+                label: "Channel IDs",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "123, 456",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create an integration in Twist Settings", "Copy the API token", "Enter token and workspace ID below"],
+        setup_steps: &[
+            "Create an integration in Twist Settings",
+            "Copy the API token",
+            "Enter token and workspace ID below",
+        ],
         config_template: "[channels.twist]\ntoken_env = \"TWIST_TOKEN\"\nworkspace_id = \"\"",
     },
     ChannelMeta {
-        name: "zulip", display_name: "Zulip", icon: "ZL",
+        name: "zulip",
+        display_name: "Zulip",
+        icon: "ZL",
         description: "Zulip event queue adapter",
-        category: "enterprise", difficulty: "Easy", setup_time: "~2 min",
+        category: "enterprise",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your API key, server URL, and bot email",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "server_url", label: "Server URL", field_type: FieldType::Text, env_var: None, required: true, placeholder: "https://chat.zulip.org", advanced: false },
-            ChannelField { key: "bot_email", label: "Bot Email", field_type: FieldType::Text, env_var: None, required: true, placeholder: "bot@zulip.example.com", advanced: false },
-            ChannelField { key: "api_key_env", label: "API Key", field_type: FieldType::Secret, env_var: Some("ZULIP_API_KEY"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "streams", label: "Streams", field_type: FieldType::List, env_var: None, required: false, placeholder: "general, dev", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "server_url",
+                label: "Server URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "https://chat.zulip.org",
+                advanced: false,
+            },
+            ChannelField {
+                key: "bot_email",
+                label: "Bot Email",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "bot@zulip.example.com",
+                advanced: false,
+            },
+            ChannelField {
+                key: "api_key_env",
+                label: "API Key",
+                field_type: FieldType::Secret,
+                env_var: Some("ZULIP_API_KEY"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "streams",
+                label: "Streams",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "general, dev",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a bot in Zulip Settings > Your Bots", "Copy the API key", "Enter server URL, bot email, and key below"],
+        setup_steps: &[
+            "Create a bot in Zulip Settings > Your Bots",
+            "Copy the API key",
+            "Enter server URL, bot email, and key below",
+        ],
         config_template: "[channels.zulip]\nserver_url = \"\"\nbot_email = \"\"\napi_key_env = \"ZULIP_API_KEY\"",
     },
     // ── Developer (9) ───────────────────────────────────────────────
     ChannelMeta {
-        name: "irc", display_name: "IRC", icon: "IR",
+        name: "irc",
+        display_name: "IRC",
+        icon: "IR",
         description: "IRC raw TCP adapter",
-        category: "developer", difficulty: "Easy", setup_time: "~2 min",
+        category: "developer",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Enter server and nickname",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "server", label: "Server", field_type: FieldType::Text, env_var: None, required: true, placeholder: "irc.libera.chat", advanced: false },
-            ChannelField { key: "nick", label: "Nickname", field_type: FieldType::Text, env_var: None, required: true, placeholder: "openfang", advanced: false },
-            ChannelField { key: "channels", label: "Channels", field_type: FieldType::List, env_var: None, required: false, placeholder: "#openfang, #general", advanced: false },
-            ChannelField { key: "port", label: "Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "6667", advanced: true },
-            ChannelField { key: "use_tls", label: "Use TLS", field_type: FieldType::Text, env_var: None, required: false, placeholder: "false", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "server",
+                label: "Server",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "irc.libera.chat",
+                advanced: false,
+            },
+            ChannelField {
+                key: "nick",
+                label: "Nickname",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "openfang",
+                advanced: false,
+            },
+            ChannelField {
+                key: "channels",
+                label: "Channels",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "#openfang, #general",
+                advanced: false,
+            },
+            ChannelField {
+                key: "port",
+                label: "Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "6667",
+                advanced: true,
+            },
+            ChannelField {
+                key: "use_tls",
+                label: "Use TLS",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "false",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Choose an IRC server", "Enter server, nick, and channels below"],
+        setup_steps: &[
+            "Choose an IRC server",
+            "Enter server, nick, and channels below",
+        ],
         config_template: "[channels.irc]\nserver = \"irc.libera.chat\"\nnick = \"openfang\"",
     },
     ChannelMeta {
-        name: "xmpp", display_name: "XMPP/Jabber", icon: "XM",
+        name: "xmpp",
+        display_name: "XMPP/Jabber",
+        icon: "XM",
         description: "XMPP/Jabber protocol adapter",
-        category: "developer", difficulty: "Easy", setup_time: "~3 min",
+        category: "developer",
+        difficulty: "Easy",
+        setup_time: "~3 min",
         quick_setup: "Enter your JID and password",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "jid", label: "JID", field_type: FieldType::Text, env_var: None, required: true, placeholder: "bot@jabber.org", advanced: false },
-            ChannelField { key: "password_env", label: "Password", field_type: FieldType::Secret, env_var: Some("XMPP_PASSWORD"), required: true, placeholder: "password", advanced: false },
-            ChannelField { key: "server", label: "Server", field_type: FieldType::Text, env_var: None, required: false, placeholder: "jabber.org", advanced: true },
-            ChannelField { key: "port", label: "Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "5222", advanced: true },
-            ChannelField { key: "rooms", label: "MUC Rooms", field_type: FieldType::List, env_var: None, required: false, placeholder: "room@conference.jabber.org", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "jid",
+                label: "JID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "bot@jabber.org",
+                advanced: false,
+            },
+            ChannelField {
+                key: "password_env",
+                label: "Password",
+                field_type: FieldType::Secret,
+                env_var: Some("XMPP_PASSWORD"),
+                required: true,
+                placeholder: "password",
+                advanced: false,
+            },
+            ChannelField {
+                key: "server",
+                label: "Server",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "jabber.org",
+                advanced: true,
+            },
+            ChannelField {
+                key: "port",
+                label: "Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "5222",
+                advanced: true,
+            },
+            ChannelField {
+                key: "rooms",
+                label: "MUC Rooms",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "room@conference.jabber.org",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a bot account on your XMPP server", "Enter JID and password below"],
+        setup_steps: &[
+            "Create a bot account on your XMPP server",
+            "Enter JID and password below",
+        ],
         config_template: "[channels.xmpp]\njid = \"\"\npassword_env = \"XMPP_PASSWORD\"",
     },
     ChannelMeta {
-        name: "gitter", display_name: "Gitter", icon: "GT",
+        name: "gitter",
+        display_name: "Gitter",
+        icon: "GT",
         description: "Gitter Streaming API adapter",
-        category: "developer", difficulty: "Easy", setup_time: "~2 min",
+        category: "developer",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your auth token and room ID",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "token_env", label: "Auth Token", field_type: FieldType::Secret, env_var: Some("GITTER_TOKEN"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "room_id", label: "Room ID", field_type: FieldType::Text, env_var: None, required: true, placeholder: "abc123def456", advanced: false },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "token_env",
+                label: "Auth Token",
+                field_type: FieldType::Secret,
+                env_var: Some("GITTER_TOKEN"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "room_id",
+                label: "Room ID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "abc123def456",
+                advanced: false,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Get a token from developer.gitter.im", "Find your room ID", "Paste both below"],
+        setup_steps: &[
+            "Get a token from developer.gitter.im",
+            "Find your room ID",
+            "Paste both below",
+        ],
         config_template: "[channels.gitter]\ntoken_env = \"GITTER_TOKEN\"\nroom_id = \"\"",
     },
     ChannelMeta {
-        name: "discourse", display_name: "Discourse", icon: "DS",
+        name: "discourse",
+        display_name: "Discourse",
+        icon: "DS",
         description: "Discourse forum API adapter",
-        category: "developer", difficulty: "Easy", setup_time: "~2 min",
+        category: "developer",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your API key and forum URL",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "base_url", label: "Forum URL", field_type: FieldType::Text, env_var: None, required: true, placeholder: "https://forum.example.com", advanced: false },
-            ChannelField { key: "api_key_env", label: "API Key", field_type: FieldType::Secret, env_var: Some("DISCOURSE_API_KEY"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "api_username", label: "API Username", field_type: FieldType::Text, env_var: None, required: false, placeholder: "system", advanced: true },
-            ChannelField { key: "categories", label: "Categories", field_type: FieldType::List, env_var: None, required: false, placeholder: "general, support", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "base_url",
+                label: "Forum URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "https://forum.example.com",
+                advanced: false,
+            },
+            ChannelField {
+                key: "api_key_env",
+                label: "API Key",
+                field_type: FieldType::Secret,
+                env_var: Some("DISCOURSE_API_KEY"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "api_username",
+                label: "API Username",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "system",
+                advanced: true,
+            },
+            ChannelField {
+                key: "categories",
+                label: "Categories",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "general, support",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Go to Admin > API > Keys", "Generate an API key", "Enter forum URL and key below"],
+        setup_steps: &[
+            "Go to Admin > API > Keys",
+            "Generate an API key",
+            "Enter forum URL and key below",
+        ],
         config_template: "[channels.discourse]\nbase_url = \"\"\napi_key_env = \"DISCOURSE_API_KEY\"",
     },
     ChannelMeta {
-        name: "revolt", display_name: "Revolt", icon: "RV",
+        name: "revolt",
+        display_name: "Revolt",
+        icon: "RV",
         description: "Revolt bot adapter",
-        category: "developer", difficulty: "Easy", setup_time: "~1 min",
+        category: "developer",
+        difficulty: "Easy",
+        setup_time: "~1 min",
         quick_setup: "Paste your bot token",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "bot_token_env", label: "Bot Token", field_type: FieldType::Secret, env_var: Some("REVOLT_BOT_TOKEN"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "api_url", label: "API URL", field_type: FieldType::Text, env_var: None, required: false, placeholder: "https://api.revolt.chat", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "bot_token_env",
+                label: "Bot Token",
+                field_type: FieldType::Secret,
+                env_var: Some("REVOLT_BOT_TOKEN"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "api_url",
+                label: "API URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "https://api.revolt.chat",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Go to Settings > My Bots in Revolt", "Create a bot and copy the token", "Paste it below"],
+        setup_steps: &[
+            "Go to Settings > My Bots in Revolt",
+            "Create a bot and copy the token",
+            "Paste it below",
+        ],
         config_template: "[channels.revolt]\nbot_token_env = \"REVOLT_BOT_TOKEN\"",
     },
     ChannelMeta {
-        name: "guilded", display_name: "Guilded", icon: "GD",
+        name: "guilded",
+        display_name: "Guilded",
+        icon: "GD",
         description: "Guilded bot adapter",
-        category: "developer", difficulty: "Easy", setup_time: "~1 min",
+        category: "developer",
+        difficulty: "Easy",
+        setup_time: "~1 min",
         quick_setup: "Paste your bot token",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "bot_token_env", label: "Bot Token", field_type: FieldType::Secret, env_var: Some("GUILDED_BOT_TOKEN"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "server_ids", label: "Server IDs", field_type: FieldType::List, env_var: None, required: false, placeholder: "abc123", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "bot_token_env",
+                label: "Bot Token",
+                field_type: FieldType::Secret,
+                env_var: Some("GUILDED_BOT_TOKEN"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "server_ids",
+                label: "Server IDs",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "abc123",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Go to Server Settings > Bots in Guilded", "Create a bot and copy the token", "Paste it below"],
+        setup_steps: &[
+            "Go to Server Settings > Bots in Guilded",
+            "Create a bot and copy the token",
+            "Paste it below",
+        ],
         config_template: "[channels.guilded]\nbot_token_env = \"GUILDED_BOT_TOKEN\"",
     },
     ChannelMeta {
-        name: "nextcloud", display_name: "Nextcloud Talk", icon: "NC",
+        name: "nextcloud",
+        display_name: "Nextcloud Talk",
+        icon: "NC",
         description: "Nextcloud Talk REST adapter",
-        category: "developer", difficulty: "Easy", setup_time: "~2 min",
+        category: "developer",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your server URL and auth token",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "server_url", label: "Server URL", field_type: FieldType::Text, env_var: None, required: true, placeholder: "https://cloud.example.com", advanced: false },
-            ChannelField { key: "token_env", label: "Auth Token", field_type: FieldType::Secret, env_var: Some("NEXTCLOUD_TOKEN"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "allowed_rooms", label: "Room Tokens", field_type: FieldType::List, env_var: None, required: false, placeholder: "abc123", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "server_url",
+                label: "Server URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "https://cloud.example.com",
+                advanced: false,
+            },
+            ChannelField {
+                key: "token_env",
+                label: "Auth Token",
+                field_type: FieldType::Secret,
+                env_var: Some("NEXTCLOUD_TOKEN"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "allowed_rooms",
+                label: "Room Tokens",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "abc123",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a bot user in Nextcloud", "Generate an app password", "Enter URL and token below"],
+        setup_steps: &[
+            "Create a bot user in Nextcloud",
+            "Generate an app password",
+            "Enter URL and token below",
+        ],
         config_template: "[channels.nextcloud]\nserver_url = \"\"\ntoken_env = \"NEXTCLOUD_TOKEN\"",
     },
     ChannelMeta {
-        name: "rocketchat", display_name: "Rocket.Chat", icon: "RC",
+        name: "rocketchat",
+        display_name: "Rocket.Chat",
+        icon: "RC",
         description: "Rocket.Chat REST adapter",
-        category: "developer", difficulty: "Easy", setup_time: "~2 min",
+        category: "developer",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your server URL, user ID, and token",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "server_url", label: "Server URL", field_type: FieldType::Text, env_var: None, required: true, placeholder: "https://rocket.example.com", advanced: false },
-            ChannelField { key: "user_id", label: "Bot User ID", field_type: FieldType::Text, env_var: None, required: true, placeholder: "abc123", advanced: false },
-            ChannelField { key: "token_env", label: "Auth Token", field_type: FieldType::Secret, env_var: Some("ROCKETCHAT_TOKEN"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "allowed_channels", label: "Channel IDs", field_type: FieldType::List, env_var: None, required: false, placeholder: "GENERAL", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "server_url",
+                label: "Server URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "https://rocket.example.com",
+                advanced: false,
+            },
+            ChannelField {
+                key: "user_id",
+                label: "Bot User ID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "abc123",
+                advanced: false,
+            },
+            ChannelField {
+                key: "token_env",
+                label: "Auth Token",
+                field_type: FieldType::Secret,
+                env_var: Some("ROCKETCHAT_TOKEN"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "allowed_channels",
+                label: "Channel IDs",
+                field_type: FieldType::List,
+                env_var: None,
+                required: false,
+                placeholder: "GENERAL",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a bot in Admin > Users", "Generate a personal access token", "Enter URL, user ID, and token below"],
+        setup_steps: &[
+            "Create a bot in Admin > Users",
+            "Generate a personal access token",
+            "Enter URL, user ID, and token below",
+        ],
         config_template: "[channels.rocketchat]\nserver_url = \"\"\ntoken_env = \"ROCKETCHAT_TOKEN\"\nuser_id = \"\"",
     },
     ChannelMeta {
-        name: "twitch", display_name: "Twitch", icon: "TV",
+        name: "twitch",
+        display_name: "Twitch",
+        icon: "TV",
         description: "Twitch IRC gateway adapter",
-        category: "developer", difficulty: "Easy", setup_time: "~2 min",
+        category: "developer",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your OAuth token and enter channel name",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "oauth_token_env", label: "OAuth Token", field_type: FieldType::Secret, env_var: Some("TWITCH_OAUTH_TOKEN"), required: true, placeholder: "oauth:abc123...", advanced: false },
-            ChannelField { key: "nick", label: "Bot Nickname", field_type: FieldType::Text, env_var: None, required: true, placeholder: "openfang", advanced: false },
-            ChannelField { key: "channels", label: "Channels (no #)", field_type: FieldType::List, env_var: None, required: true, placeholder: "mychannel", advanced: false },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "oauth_token_env",
+                label: "OAuth Token",
+                field_type: FieldType::Secret,
+                env_var: Some("TWITCH_OAUTH_TOKEN"),
+                required: true,
+                placeholder: "oauth:abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "nick",
+                label: "Bot Nickname",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "openfang",
+                advanced: false,
+            },
+            ChannelField {
+                key: "channels",
+                label: "Channels (no #)",
+                field_type: FieldType::List,
+                env_var: None,
+                required: true,
+                placeholder: "mychannel",
+                advanced: false,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Generate an OAuth token at twitchapps.com/tmi", "Enter token, nick, and channel below"],
+        setup_steps: &[
+            "Generate an OAuth token at twitchapps.com/tmi",
+            "Enter token, nick, and channel below",
+        ],
         config_template: "[channels.twitch]\noauth_token_env = \"TWITCH_OAUTH_TOKEN\"\nnick = \"openfang\"",
     },
     // ── Notifications (4) ───────────────────────────────────────────
     ChannelMeta {
-        name: "ntfy", display_name: "ntfy", icon: "NF",
+        name: "ntfy",
+        display_name: "ntfy",
+        icon: "NF",
         description: "ntfy.sh pub/sub notification adapter",
-        category: "notifications", difficulty: "Easy", setup_time: "~1 min",
+        category: "notifications",
+        difficulty: "Easy",
+        setup_time: "~1 min",
         quick_setup: "Just enter a topic name",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "topic", label: "Topic", field_type: FieldType::Text, env_var: None, required: true, placeholder: "openfang-alerts", advanced: false },
-            ChannelField { key: "server_url", label: "Server URL", field_type: FieldType::Text, env_var: None, required: false, placeholder: "https://ntfy.sh", advanced: true },
-            ChannelField { key: "token_env", label: "Auth Token", field_type: FieldType::Secret, env_var: Some("NTFY_TOKEN"), required: false, placeholder: "tk_abc123...", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "topic",
+                label: "Topic",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "openfang-alerts",
+                advanced: false,
+            },
+            ChannelField {
+                key: "server_url",
+                label: "Server URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "https://ntfy.sh",
+                advanced: true,
+            },
+            ChannelField {
+                key: "token_env",
+                label: "Auth Token",
+                field_type: FieldType::Secret,
+                env_var: Some("NTFY_TOKEN"),
+                required: false,
+                placeholder: "tk_abc123...",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
         setup_steps: &["Pick a topic name", "Enter it below — that's it!"],
         config_template: "[channels.ntfy]\ntopic = \"\"",
     },
     ChannelMeta {
-        name: "gotify", display_name: "Gotify", icon: "GF",
+        name: "gotify",
+        display_name: "Gotify",
+        icon: "GF",
         description: "Gotify WebSocket notification adapter",
-        category: "notifications", difficulty: "Easy", setup_time: "~2 min",
+        category: "notifications",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Paste your server URL and tokens",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "server_url", label: "Server URL", field_type: FieldType::Text, env_var: None, required: true, placeholder: "https://gotify.example.com", advanced: false },
-            ChannelField { key: "app_token_env", label: "App Token (send)", field_type: FieldType::Secret, env_var: Some("GOTIFY_APP_TOKEN"), required: true, placeholder: "abc123...", advanced: false },
-            ChannelField { key: "client_token_env", label: "Client Token (receive)", field_type: FieldType::Secret, env_var: Some("GOTIFY_CLIENT_TOKEN"), required: true, placeholder: "def456...", advanced: false },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "server_url",
+                label: "Server URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "https://gotify.example.com",
+                advanced: false,
+            },
+            ChannelField {
+                key: "app_token_env",
+                label: "App Token (send)",
+                field_type: FieldType::Secret,
+                env_var: Some("GOTIFY_APP_TOKEN"),
+                required: true,
+                placeholder: "abc123...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "client_token_env",
+                label: "Client Token (receive)",
+                field_type: FieldType::Secret,
+                env_var: Some("GOTIFY_CLIENT_TOKEN"),
+                required: true,
+                placeholder: "def456...",
+                advanced: false,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create an app and a client in Gotify", "Copy both tokens", "Enter URL and tokens below"],
+        setup_steps: &[
+            "Create an app and a client in Gotify",
+            "Copy both tokens",
+            "Enter URL and tokens below",
+        ],
         config_template: "[channels.gotify]\nserver_url = \"\"\napp_token_env = \"GOTIFY_APP_TOKEN\"\nclient_token_env = \"GOTIFY_CLIENT_TOKEN\"",
     },
     ChannelMeta {
-        name: "webhook", display_name: "Webhook", icon: "WH",
+        name: "webhook",
+        display_name: "Webhook",
+        icon: "WH",
         description: "Generic HMAC-signed webhook adapter",
-        category: "notifications", difficulty: "Easy", setup_time: "~1 min",
+        category: "notifications",
+        difficulty: "Easy",
+        setup_time: "~1 min",
         quick_setup: "Optionally set an HMAC secret",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "secret_env", label: "HMAC Secret", field_type: FieldType::Secret, env_var: Some("WEBHOOK_SECRET"), required: false, placeholder: "my-secret", advanced: false },
-            ChannelField { key: "listen_port", label: "Listen Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "8460", advanced: true },
-            ChannelField { key: "callback_url", label: "Callback URL", field_type: FieldType::Text, env_var: None, required: false, placeholder: "https://example.com/webhook", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "secret_env",
+                label: "HMAC Secret",
+                field_type: FieldType::Secret,
+                env_var: Some("WEBHOOK_SECRET"),
+                required: false,
+                placeholder: "my-secret",
+                advanced: false,
+            },
+            ChannelField {
+                key: "listen_port",
+                label: "Listen Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "8460",
+                advanced: true,
+            },
+            ChannelField {
+                key: "callback_url",
+                label: "Callback URL",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "https://example.com/webhook",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Enter an HMAC secret (or leave blank)", "Click Save — that's it!"],
+        setup_steps: &[
+            "Enter an HMAC secret (or leave blank)",
+            "Click Save — that's it!",
+        ],
         config_template: "[channels.webhook]\nsecret_env = \"WEBHOOK_SECRET\"",
     },
     ChannelMeta {
-        name: "mumble", display_name: "Mumble", icon: "MB",
+        name: "mumble",
+        display_name: "Mumble",
+        icon: "MB",
         description: "Mumble text chat adapter",
-        category: "notifications", difficulty: "Easy", setup_time: "~2 min",
+        category: "notifications",
+        difficulty: "Easy",
+        setup_time: "~2 min",
         quick_setup: "Enter server host and username",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "host", label: "Host", field_type: FieldType::Text, env_var: None, required: true, placeholder: "mumble.example.com", advanced: false },
-            ChannelField { key: "username", label: "Username", field_type: FieldType::Text, env_var: None, required: true, placeholder: "openfang", advanced: false },
-            ChannelField { key: "password_env", label: "Server Password", field_type: FieldType::Secret, env_var: Some("MUMBLE_PASSWORD"), required: false, placeholder: "password", advanced: true },
-            ChannelField { key: "port", label: "Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "64738", advanced: true },
-            ChannelField { key: "channel", label: "Channel", field_type: FieldType::Text, env_var: None, required: false, placeholder: "Root", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "host",
+                label: "Host",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "mumble.example.com",
+                advanced: false,
+            },
+            ChannelField {
+                key: "username",
+                label: "Username",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "openfang",
+                advanced: false,
+            },
+            ChannelField {
+                key: "password_env",
+                label: "Server Password",
+                field_type: FieldType::Secret,
+                env_var: Some("MUMBLE_PASSWORD"),
+                required: false,
+                placeholder: "password",
+                advanced: true,
+            },
+            ChannelField {
+                key: "port",
+                label: "Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "64738",
+                advanced: true,
+            },
+            ChannelField {
+                key: "channel",
+                label: "Channel",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "Root",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
         setup_steps: &["Enter host and username below", "Optionally add a password"],
         config_template: "[channels.mumble]\nhost = \"\"\nusername = \"openfang\"",
     },
     ChannelMeta {
-        name: "wecom", display_name: "WeCom", icon: "WC",
+        name: "wecom",
+        display_name: "WeCom",
+        icon: "WC",
         description: "WeCom (WeChat Work) adapter",
-        category: "messaging", difficulty: "Easy", setup_time: "~3 min",
+        category: "messaging",
+        difficulty: "Easy",
+        setup_time: "~3 min",
         quick_setup: "Enter your Corp ID, Agent ID, and Secret",
         setup_type: "form",
         fields: &[
-            ChannelField { key: "corp_id", label: "Corp ID", field_type: FieldType::Text, env_var: None, required: true, placeholder: "wwxxxxx", advanced: false },
-            ChannelField { key: "agent_id", label: "Agent ID", field_type: FieldType::Text, env_var: None, required: true, placeholder: "wwxxxxx", advanced: false },
-            ChannelField { key: "secret_env", label: "Secret", field_type: FieldType::Secret, env_var: Some("WECOM_SECRET"), required: true, placeholder: "secret", advanced: false },
-            ChannelField { key: "token", label: "Callback Token", field_type: FieldType::Text, env_var: None, required: false, placeholder: "callback_token", advanced: true },
-            ChannelField { key: "encoding_aes_key", label: "Encoding AES Key", field_type: FieldType::Text, env_var: None, required: false, placeholder: "encoding_aes_key", advanced: true },
-            ChannelField { key: "webhook_port", label: "Webhook Port", field_type: FieldType::Number, env_var: None, required: false, placeholder: "8454", advanced: true },
-            ChannelField { key: "default_agent", label: "Default Agent", field_type: FieldType::Text, env_var: None, required: false, placeholder: "assistant", advanced: true },
+            ChannelField {
+                key: "corp_id",
+                label: "Corp ID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "wwxxxxx",
+                advanced: false,
+            },
+            ChannelField {
+                key: "agent_id",
+                label: "Agent ID",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: true,
+                placeholder: "wwxxxxx",
+                advanced: false,
+            },
+            ChannelField {
+                key: "secret_env",
+                label: "Secret",
+                field_type: FieldType::Secret,
+                env_var: Some("WECOM_SECRET"),
+                required: true,
+                placeholder: "secret",
+                advanced: false,
+            },
+            ChannelField {
+                key: "token",
+                label: "Callback Token",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "callback_token",
+                advanced: true,
+            },
+            ChannelField {
+                key: "encoding_aes_key",
+                label: "Encoding AES Key",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "encoding_aes_key",
+                advanced: true,
+            },
+            ChannelField {
+                key: "webhook_port",
+                label: "Webhook Port",
+                field_type: FieldType::Number,
+                env_var: None,
+                required: false,
+                placeholder: "8454",
+                advanced: true,
+            },
+            ChannelField {
+                key: "default_agent",
+                label: "Default Agent",
+                field_type: FieldType::Text,
+                env_var: None,
+                required: false,
+                placeholder: "assistant",
+                advanced: true,
+            },
         ],
-        setup_steps: &["Create a WeCom application at work.weixin.qq.com", "Get Corp ID, Agent ID, and Secret", "Configure callback URL to your webhook endpoint"],
+        setup_steps: &[
+            "Create a WeCom application at work.weixin.qq.com",
+            "Get Corp ID, Agent ID, and Secret",
+            "Configure callback URL to your webhook endpoint",
+        ],
         config_template: "[channels.wecom]\ncorp_id = \"\"\nagent_id = \"\"\nsecret_env = \"WECOM_SECRET\"",
     },
 ];
@@ -2538,7 +4329,7 @@ pub async fn configure_channel(
             return (
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "Unknown channel"})),
-            )
+            );
         }
     };
 
@@ -2548,7 +4339,7 @@ pub async fn configure_channel(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Missing 'fields' object"})),
-            )
+            );
         }
     };
 
@@ -2646,7 +4437,7 @@ pub async fn remove_channel(
             return (
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "Unknown channel"})),
-            )
+            );
         }
     };
 
@@ -2713,7 +4504,7 @@ pub async fn test_channel(
             return (
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"status": "error", "message": "Unknown channel"})),
-            )
+            );
         }
     };
 
@@ -5301,7 +7092,7 @@ pub async fn agent_budget_status(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
 
@@ -5311,7 +7102,7 @@ pub async fn agent_budget_status(
             return (
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "Agent not found"})),
-            )
+            );
         }
     };
 
@@ -5395,7 +7186,7 @@ pub async fn update_agent_budget(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
 
@@ -6531,7 +8322,7 @@ pub async fn a2a_discover_external(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Missing 'url' field"})),
-            )
+            );
         }
     };
 
@@ -6579,7 +8370,7 @@ pub async fn a2a_send_external(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Missing 'url' field"})),
-            )
+            );
         }
     };
     let message = match body["message"].as_str() {
@@ -6588,7 +8379,7 @@ pub async fn a2a_send_external(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Missing 'message' field"})),
-            )
+            );
         }
     };
     let session_id = body["session_id"].as_str();
@@ -6618,7 +8409,7 @@ pub async fn a2a_external_task_status(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Missing 'url' query parameter"})),
-            )
+            );
         }
     };
 
@@ -6751,7 +8542,7 @@ pub async fn list_agent_sessions(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     match state.kernel.list_agent_sessions(agent_id) {
@@ -6778,7 +8569,7 @@ pub async fn create_agent_session(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     let label = req.get("label").and_then(|v| v.as_str());
@@ -6802,7 +8593,7 @@ pub async fn switch_agent_session(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     let session_id = match session_id_str.parse::<uuid::Uuid>() {
@@ -6811,7 +8602,7 @@ pub async fn switch_agent_session(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid session ID"})),
-            )
+            );
         }
     };
     match state.kernel.switch_agent_session(agent_id, session_id) {
@@ -6839,7 +8630,7 @@ pub async fn reset_session(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     match state.kernel.reset_session(agent_id) {
@@ -6865,7 +8656,7 @@ pub async fn clear_agent_history(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     if state.kernel.registry.get(agent_id).is_none() {
@@ -6897,7 +8688,7 @@ pub async fn compact_session(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     match state.kernel.compact_agent_session(agent_id).await {
@@ -6923,7 +8714,7 @@ pub async fn stop_agent(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     match state.kernel.stop_agent_run(agent_id) {
@@ -6954,7 +8745,7 @@ pub async fn set_model(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     let model = match body["model"].as_str() {
@@ -6963,7 +8754,7 @@ pub async fn set_model(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Missing 'model' field"})),
-            )
+            );
         }
     };
     let explicit_provider = body["provider"].as_str();
@@ -7011,7 +8802,7 @@ pub async fn get_agent_tools(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     let entry = match state.kernel.registry.get(agent_id) {
@@ -7020,7 +8811,7 @@ pub async fn get_agent_tools(
             return (
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "Agent not found"})),
-            )
+            );
         }
     };
     (
@@ -7044,7 +8835,7 @@ pub async fn set_agent_tools(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     let allowlist = body
@@ -7096,7 +8887,7 @@ pub async fn get_agent_skills(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     let entry = match state.kernel.registry.get(agent_id) {
@@ -7105,7 +8896,7 @@ pub async fn get_agent_skills(
             return (
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "Agent not found"})),
-            )
+            );
         }
     };
     let available = state
@@ -7141,7 +8932,7 @@ pub async fn set_agent_skills(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     let skills: Vec<String> = body["skills"]
@@ -7175,7 +8966,7 @@ pub async fn get_agent_mcp_servers(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     let entry = match state.kernel.registry.get(agent_id) {
@@ -7184,7 +8975,7 @@ pub async fn get_agent_mcp_servers(
             return (
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": "Agent not found"})),
-            )
+            );
         }
     };
     // Collect known MCP server names from connected tools
@@ -7226,7 +9017,7 @@ pub async fn set_agent_mcp_servers(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid agent ID"})),
-            )
+            );
         }
     };
     let servers: Vec<String> = body["mcp_servers"]
@@ -7785,7 +9576,7 @@ pub async fn create_skill(
 
 fn secret_env_line_matches_key(line: &str, key: &str) -> bool {
     line.split_once('=')
-        .map(|(existing_key, _)| existing_key == key)
+        .map(|(existing_key, _)| existing_key.trim() == key)
         .unwrap_or(false)
 }
 
@@ -10636,7 +12427,7 @@ pub async fn copilot_oauth_poll(
             return (
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"status": "not_found", "error": "Unknown poll_id"})),
-            )
+            );
         }
     };
 
@@ -10731,7 +12522,11 @@ pub async fn openai_oauth_start(Json(body): Json<serde_json::Value>) -> impl Int
     let client_id = std::env::var("OPENAI_OAUTH_CLIENT_ID")
         .ok()
         .filter(|s| !s.trim().is_empty())
-        .or_else(|| std::env::var("OPENAI_CLIENT_ID").ok().filter(|s| !s.trim().is_empty()));
+        .or_else(|| {
+            std::env::var("OPENAI_CLIENT_ID")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        });
     let Some(client_id) = client_id else {
         return (
             StatusCode::BAD_REQUEST,
@@ -10782,22 +12577,30 @@ pub async fn openai_oauth_callback(
     State(state): State<Arc<AppState>>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let code = match params.get("code").map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    let code = match params
+        .get("code")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         Some(v) => v.to_string(),
         None => {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Missing code query parameter"})),
-            )
+            );
         }
     };
-    let state_param = match params.get("state").map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    let state_param = match params
+        .get("state")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         Some(v) => v.to_string(),
         None => {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Missing state query parameter"})),
-            )
+            );
         }
     };
 
@@ -10807,14 +12610,18 @@ pub async fn openai_oauth_callback(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Unknown or expired OAuth state"})),
-            )
+            );
         }
     };
 
     let client_id = std::env::var("OPENAI_OAUTH_CLIENT_ID")
         .ok()
         .filter(|s| !s.trim().is_empty())
-        .or_else(|| std::env::var("OPENAI_CLIENT_ID").ok().filter(|s| !s.trim().is_empty()));
+        .or_else(|| {
+            std::env::var("OPENAI_CLIENT_ID")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        });
     let Some(client_id) = client_id else {
         return (
             StatusCode::BAD_REQUEST,
@@ -10833,7 +12640,8 @@ pub async fn openai_oauth_callback(
     .await
     {
         Ok(creds) => {
-            let store_path = openfang_runtime::openai_oauth::store_path_for_profile(Some(&flow.profile_id));
+            let store_path =
+                openfang_runtime::openai_oauth::store_path_for_profile(Some(&flow.profile_id));
             if let Err(e) = openfang_runtime::openai_oauth::save_credentials(&store_path, &creds) {
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -10912,7 +12720,11 @@ pub async fn openai_oauth_refresh(
     let client_id = std::env::var("OPENAI_OAUTH_CLIENT_ID")
         .ok()
         .filter(|s| !s.trim().is_empty())
-        .or_else(|| std::env::var("OPENAI_CLIENT_ID").ok().filter(|s| !s.trim().is_empty()));
+        .or_else(|| {
+            std::env::var("OPENAI_CLIENT_ID")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        });
     let Some(client_id) = client_id else {
         return (
             StatusCode::BAD_REQUEST,
@@ -10936,7 +12748,9 @@ pub async fn openai_oauth_refresh(
 
     match openfang_runtime::openai_oauth::refresh_credentials(&client_id, &creds).await {
         Ok(refreshed) => {
-            if let Err(e) = openfang_runtime::openai_oauth::save_credentials(&store_path, &refreshed) {
+            if let Err(e) =
+                openfang_runtime::openai_oauth::save_credentials(&store_path, &refreshed)
+            {
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(serde_json::json!({"error": e})),
@@ -10985,7 +12799,9 @@ pub async fn openai_oauth_logout(
                 .detect_auth();
             (
                 StatusCode::OK,
-                Json(serde_json::json!({"status": "logged_out", "profile_id": profile_id.unwrap_or("default")})),
+                Json(
+                    serde_json::json!({"status": "logged_out", "profile_id": profile_id.unwrap_or("default")}),
+                ),
             )
         }
         Err(e) => (
@@ -11318,7 +13134,7 @@ pub async fn comms_send(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid from_agent_id"})),
-            )
+            );
         }
     };
     if state.kernel.registry.get(from_id).is_none() {
@@ -11335,7 +13151,7 @@ pub async fn comms_send(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"error": "Invalid to_agent_id"})),
-            )
+            );
         }
     };
     if state.kernel.registry.get(to_id).is_none() {
@@ -11657,6 +13473,33 @@ mod channel_config_tests {
 
         let contents = std::fs::read_to_string(&path).unwrap();
         assert!(!contents.contains("TOKEN=value"));
+        assert!(contents.contains("TOKEN_SUFFIX=keep"));
+    }
+
+    #[test]
+    fn test_write_secret_env_updates_trimmed_existing_key() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("secrets.env");
+
+        std::fs::write(&path, "TOKEN = old\nTOKEN_SUFFIX=keep\n").unwrap();
+        write_secret_env(&path, "TOKEN", "fresh").unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("TOKEN_SUFFIX=keep\n"));
+        assert!(contents.contains("TOKEN=\"fresh\"\n"));
+        assert!(!contents.contains("TOKEN = old\n"));
+    }
+
+    #[test]
+    fn test_remove_secret_env_matches_trimmed_existing_key() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("secrets.env");
+
+        std::fs::write(&path, "TOKEN = value\nTOKEN_SUFFIX=keep\n").unwrap();
+        remove_secret_env(&path, "TOKEN").unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(!contents.contains("TOKEN = value"));
         assert!(contents.contains("TOKEN_SUFFIX=keep"));
     }
 }
