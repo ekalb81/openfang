@@ -66,6 +66,10 @@ fn load_env_file(path: Option<PathBuf>) {
 /// Creates the file if missing. Sets 0600 permissions on Unix.
 /// Also sets the key in the current process environment.
 pub fn save_env_key(key: &str, value: &str) -> Result<(), String> {
+    if value.contains(['\n', '\r']) {
+        return Err("Environment values cannot contain newlines".to_string());
+    }
+
     let path = env_file_path().ok_or("Could not determine home directory")?;
 
     // Ensure parent directory exists
@@ -210,6 +214,12 @@ fn write_env_file(path: &PathBuf, entries: &BTreeMap<String, String>) -> Result<
     content.push_str("# Do not edit while the daemon is running.\n\n");
 
     for (key, value) in entries {
+        if value.contains(['\n', '\r']) {
+            return Err(format!(
+                "Refusing to write multiline environment value for {key}"
+            ));
+        }
+
         // Quote values that contain spaces or special characters
         if value.contains(' ') || value.contains('#') || value.contains('"') {
             content.push_str(&format!(
@@ -340,5 +350,56 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_write_env_file_rejects_multiline_values() {
+        let dir = std::env::temp_dir().join(format!(
+            "openfang-dotenv-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(".env");
+        let mut entries = BTreeMap::new();
+        entries.insert("MULTILINE".to_string(), "line one\nline two".to_string());
+
+        let err = write_env_file(&path, &entries).unwrap_err();
+        assert!(err.contains("MULTILINE"));
+        assert!(!path.exists());
+
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_save_env_key_rejects_multiline_values() {
+        let original_home = std::env::var_os("OPENFANG_HOME");
+        let dir = std::env::temp_dir().join(format!(
+            "openfang-dotenv-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("OPENFANG_HOME", &dir);
+
+        let result = save_env_key("MULTILINE", "line one\nline two");
+        assert_eq!(
+            result.unwrap_err(),
+            "Environment values cannot contain newlines"
+        );
+        assert!(!dir.join(".env").exists());
+        assert!(std::env::var("MULTILINE").is_err());
+
+        match original_home {
+            Some(value) => std::env::set_var("OPENFANG_HOME", value),
+            None => std::env::remove_var("OPENFANG_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
