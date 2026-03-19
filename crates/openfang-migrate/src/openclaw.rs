@@ -2882,10 +2882,13 @@ fn parse_legacy_channels(
                 });
             }
             "googlechat" => {
-                let fields: Vec<(&str, toml::Value)> = vec![(
+                let mut fields: Vec<(&str, toml::Value)> = vec![(
                     "service_account_env",
                     toml::Value::String("GOOGLE_CHAT_SERVICE_ACCOUNT".into()),
                 )];
+                if let Some(ref da) = ch.default_agent {
+                    fields.push(("default_agent", toml::Value::String(da.clone())));
+                }
                 channels_table.insert(
                     "google_chat".to_string(),
                     build_channel_table(fields, None, None, None),
@@ -4820,5 +4823,37 @@ mod tests {
             "http://signal-api.local:9090"
         );
         assert_eq!(sig["phone_number"].as_str().unwrap(), "+15551234567");
+    }
+
+    #[test]
+    fn test_legacy_google_chat_default_agent_is_preserved() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::write(
+            messaging_dir.join("googlechat.yaml"),
+            "type: googlechat\ndefault_agent: researcher\n",
+        )
+        .unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap()
+            .unwrap();
+        let table = channels.as_table().unwrap();
+        let google_chat = table["google_chat"].as_table().unwrap();
+
+        assert_eq!(
+            google_chat["service_account_env"].as_str().unwrap(),
+            "GOOGLE_CHAT_SERVICE_ACCOUNT"
+        );
+        assert_eq!(google_chat["default_agent"].as_str().unwrap(), "researcher");
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|item| { item.kind == ItemKind::Channel && item.name == "google_chat" })
+        );
     }
 }
