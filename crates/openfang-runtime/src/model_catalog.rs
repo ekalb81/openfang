@@ -319,10 +319,29 @@ impl ModelCatalog {
     /// of builtin models. Returns `true` if removed.
     pub fn remove_custom_model(&mut self, model_id: &str) -> bool {
         let lower = model_id.to_lowercase();
+        let removed_provider = self
+            .models
+            .iter()
+            .find(|m| m.id.to_lowercase() == lower && m.tier == ModelTier::Custom)
+            .map(|m| m.provider.clone());
         let before = self.models.len();
         self.models
             .retain(|m| !(m.id.to_lowercase() == lower && m.tier == ModelTier::Custom));
-        self.models.len() < before
+
+        if self.models.len() < before {
+            if let Some(provider) = removed_provider {
+                if let Some(p) = self.providers.iter_mut().find(|p| p.id == provider) {
+                    p.model_count = self
+                        .models
+                        .iter()
+                        .filter(|m| m.provider == provider)
+                        .count();
+                }
+            }
+            true
+        } else {
+            false
+        }
     }
 
     /// Load custom models from a JSON file.
@@ -4273,6 +4292,27 @@ mod tests {
         catalog.merge_discovered_models("ollama", &["new-model:latest".to_string()]);
         let after_count = catalog.get_provider("ollama").unwrap().model_count;
         assert_eq!(after_count, before_count + 1);
+    }
+
+    #[test]
+    fn test_remove_custom_model_updates_provider_model_count() {
+        let mut catalog = ModelCatalog::new();
+        let before_count = catalog.get_provider("ollama").unwrap().model_count;
+
+        assert!(catalog.add_custom_model(ModelCatalogEntry {
+            provider: "ollama".to_string(),
+            ..sample_custom_model("custom-ollama")
+        }));
+        assert_eq!(
+            catalog.get_provider("ollama").unwrap().model_count,
+            before_count + 1
+        );
+
+        assert!(catalog.remove_custom_model("custom-ollama"));
+        assert_eq!(
+            catalog.get_provider("ollama").unwrap().model_count,
+            before_count
+        );
     }
 
     #[test]
