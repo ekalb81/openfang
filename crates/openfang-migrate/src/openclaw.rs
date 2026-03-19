@@ -1716,31 +1716,33 @@ fn migrate_channels_from_json(
     // --- Google Chat ---
     if let Some(ref gc) = oc_channels.google_chat {
         if gc.enabled.unwrap_or(true) {
-            // Copy service account file if it exists
             if let Some(ref sa_file) = gc.service_account_file {
                 let src_sa = PathBuf::from(sa_file);
                 if src_sa.exists() {
-                    let dest_sa = target.join("credentials").join("google_chat_sa.json");
-                    if !dry_run {
-                        if let Some(parent) = dest_sa.parent() {
-                            let _ = std::fs::create_dir_all(parent);
-                        }
-                        if let Err(e) = std::fs::copy(&src_sa, &dest_sa) {
-                            report
-                                .warnings
-                                .push(format!("Failed to copy Google Chat SA file: {e}"));
-                        }
+                    match std::fs::read_to_string(&src_sa) {
+                        Ok(contents) => match serde_json::from_str::<serde_json::Value>(&contents) {
+                            Ok(json) => {
+                                emit_secret(
+                                    &secrets_path,
+                                    dry_run,
+                                    "GOOGLE_CHAT_SERVICE_ACCOUNT",
+                                    &json.to_string(),
+                                    report,
+                                );
+                            }
+                            Err(e) => report.warnings.push(format!(
+                                "Failed to parse Google Chat service account JSON for env migration: {e}"
+                            )),
+                        },
+                        Err(e) => report.warnings.push(format!(
+                            "Failed to read Google Chat service account file for env migration: {e}"
+                        )),
                     }
-                    report.imported.push(MigrateItem {
-                        kind: ItemKind::Secret,
-                        name: "google_chat/service_account".to_string(),
-                        destination: dest_sa.display().to_string(),
-                    });
                 }
             }
             let fields: Vec<(&str, toml::Value)> = vec![(
                 "service_account_env",
-                toml::Value::String("GOOGLE_CHAT_SA_FILE".into()),
+                toml::Value::String("GOOGLE_CHAT_SERVICE_ACCOUNT".into()),
             )];
             channels_table.insert(
                 "google_chat".to_string(),
@@ -2877,7 +2879,7 @@ fn parse_legacy_channels(
             "googlechat" => {
                 let fields: Vec<(&str, toml::Value)> = vec![(
                     "service_account_env",
-                    toml::Value::String("GOOGLE_CHAT_SA_FILE".into()),
+                    toml::Value::String("GOOGLE_CHAT_SERVICE_ACCOUNT".into()),
                 )];
                 channels_table.insert(
                     "google_chat".to_string(),
@@ -4668,6 +4670,58 @@ mod tests {
         assert!(
             table.contains_key("google_chat"),
             "googlechat should map to google_chat"
+        );
+        let google_chat = table["google_chat"].as_table().unwrap();
+        assert_eq!(
+            google_chat["service_account_env"].as_str().unwrap(),
+            "GOOGLE_CHAT_SERVICE_ACCOUNT"
+        );
+    }
+
+    #[test]
+    fn test_google_chat_service_account_file_is_embedded_in_secret_env() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let service_account_path = source.path().join("google-chat-service-account.json");
+        std::fs::write(
+            &service_account_path,
+            "{\n  \"type\": \"service_account\",\n  \"project_id\": \"demo-project\",\n  \"private_key\": \"-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n\"\n}",
+        )
+        .unwrap();
+
+        let json5_content = format!(
+            r#"{{
+  channels: {{
+    googlechat: {{
+      serviceAccountFile: {:?}
+    }}
+  }}
+}}"#,
+            service_account_path.display().to_string()
+        );
+        let root: OpenClawRoot = json5::from_str(&json5_content).unwrap();
+        let mut report = MigrationReport::default();
+
+        let channels = migrate_channels_from_json(&root, target.path(), false, &mut report);
+        let channels = channels.unwrap();
+        let table = channels.as_table().unwrap();
+        let google_chat = table["google_chat"].as_table().unwrap();
+        assert_eq!(
+            google_chat["service_account_env"].as_str().unwrap(),
+            "GOOGLE_CHAT_SERVICE_ACCOUNT"
+        );
+
+        let secrets = std::fs::read_to_string(target.path().join("secrets.env")).unwrap();
+        assert!(
+            secrets.contains("GOOGLE_CHAT_SERVICE_ACCOUNT="),
+            "expected Google Chat service account env entry, got: {secrets}"
+        );
+        assert!(secrets.contains("\\\"project_id\\\":\\\"demo-project\\\""));
+        assert!(
+            report
+                .imported
+                .iter()
+                .any(|i| i.kind == ItemKind::Secret && i.name == "GOOGLE_CHAT_SERVICE_ACCOUNT")
         );
     }
 
