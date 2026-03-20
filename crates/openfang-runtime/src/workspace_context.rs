@@ -163,7 +163,18 @@ impl WorkspaceContext {
 
 /// Read a file into the cache if it exists and is under the size limit.
 fn read_cached_file(path: &Path) -> Option<CachedFile> {
-    let meta = std::fs::metadata(path).ok()?;
+    let meta = match std::fs::metadata(path) {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(error) => {
+            warn!(
+                path = %path.display(),
+                %error,
+                "Failed to stat workspace context file; skipping"
+            );
+            return None;
+        }
+    };
     if meta.len() > MAX_FILE_SIZE {
         debug!(
             path = %path.display(),
@@ -172,8 +183,29 @@ fn read_cached_file(path: &Path) -> Option<CachedFile> {
         );
         return None;
     }
-    let mtime = meta.modified().ok()?;
-    let content = std::fs::read_to_string(path).ok()?;
+    let mtime = match meta.modified() {
+        Ok(mtime) => mtime,
+        Err(error) => {
+            warn!(
+                path = %path.display(),
+                %error,
+                "Failed to read workspace context file metadata; skipping"
+            );
+            return None;
+        }
+    };
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(error) => {
+            warn!(
+                path = %path.display(),
+                %error,
+                "Failed to read workspace context file; skipping"
+            );
+            return None;
+        }
+    };
     Some(CachedFile { content, mtime })
 }
 
@@ -453,6 +485,18 @@ mod tests {
         // Write a file larger than 32KB
         let big = "x".repeat(40_000);
         std::fs::write(dir.join("AGENTS.md"), &big).unwrap();
+
+        let ctx = WorkspaceContext::detect(&dir);
+        assert!(!ctx.cache.contains_key("AGENTS.md"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_detect_skips_unreadable_context_entry_without_panicking() {
+        let dir = std::env::temp_dir().join("openfang_ws_bad_context_entry_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("AGENTS.md")).unwrap();
 
         let ctx = WorkspaceContext::detect(&dir);
         assert!(!ctx.cache.contains_key("AGENTS.md"));
