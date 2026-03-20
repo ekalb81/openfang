@@ -197,10 +197,11 @@ pub fn save_credentials(path: &Path, creds: &OpenAIOAuthCredentials) -> Result<(
 }
 
 pub fn remove_credentials(path: &Path) -> Result<(), String> {
-    if !path.exists() {
-        return Ok(());
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("Failed to remove OAuth credentials: {error}")),
     }
-    std::fs::remove_file(path).map_err(|e| format!("Failed to remove OAuth credentials: {e}"))
 }
 
 pub fn credentials_valid(creds: &OpenAIOAuthCredentials) -> bool {
@@ -449,7 +450,7 @@ fn extract_jwt_claim(jwt: &str, key: &str) -> Option<String> {
 mod tests {
     use super::{
         DEFAULT_REDIRECT_URI, OpenAIOAuthCredentials, default_mode, default_provider,
-        generate_pkce_start, load_credentials, save_credentials,
+        generate_pkce_start, load_credentials, remove_credentials, save_credentials,
     };
     use tempfile::tempdir;
 
@@ -543,5 +544,18 @@ mod tests {
             .filter(|entry| entry.file_name().to_string_lossy().contains(".tmp-"))
             .collect();
         assert!(tmp_files.is_empty(), "temporary OAuth files should be cleaned up");
+    }
+
+    #[test]
+    fn remove_credentials_is_idempotent_when_file_is_missing() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("openai-oauth.json");
+
+        remove_credentials(&path).expect("missing credentials should be treated as removed");
+
+        std::fs::write(&path, "temporary credentials").unwrap();
+        remove_credentials(&path).expect("existing credentials should be removable");
+        remove_credentials(&path).expect("repeated removal after deletion should succeed");
+        assert!(!path.exists(), "credential file should stay removed");
     }
 }
