@@ -82,7 +82,7 @@ impl WorkspaceContext {
         let mut cache = HashMap::new();
         for &name in CONTEXT_FILES {
             let file_path = root.join(name);
-            if let Some(cached) = read_cached_file(&file_path) {
+            if let CachedFileRead::Loaded(cached) = read_cached_file(&file_path) {
                 debug!(file = name, "Loaded workspace context file");
                 cache.insert(name.to_string(), cached);
             }
@@ -100,6 +100,7 @@ impl WorkspaceContext {
     /// Get the content of a cached context file, refreshing if mtime changed.
     pub fn get_file(&mut self, name: &str) -> Option<&str> {
         let file_path = self.workspace_root.join(name);
+        let had_cached = self.cache.contains_key(name);
 
         // Check if we have a cached version
         if let Some(cached) = self.cache.get(name) {
@@ -113,15 +114,24 @@ impl WorkspaceContext {
             }
         }
 
-        // Cache miss or mtime changed — re-read
-        if let Some(new_cached) = read_cached_file(&file_path) {
-            self.cache.insert(name.to_string(), new_cached);
-            return self.cache.get(name).map(|c| c.content.as_str());
+        // Cache miss or mtime changed — re-read.
+        match read_cached_file(&file_path) {
+            CachedFileRead::Loaded(new_cached) => {
+                self.cache.insert(name.to_string(), new_cached);
+                self.cache.get(name).map(|c| c.content.as_str())
+            }
+            CachedFileRead::Missing | CachedFileRead::Oversized => {
+                self.cache.remove(name);
+                None
+            }
+            CachedFileRead::Unreadable => {
+                if had_cached {
+                    self.cache.get(name).map(|c| c.content.as_str())
+                } else {
+                    None
+                }
+            }
         }
-
-        // File doesn't exist or is too large
-        self.cache.remove(name);
-        None
     }
 
     /// Build a prompt context section summarizing the workspace.
@@ -161,18 +171,26 @@ impl WorkspaceContext {
     }
 }
 
+/// Result of attempting to refresh a cached workspace context file.
+enum CachedFileRead {
+    Loaded(CachedFile),
+    Missing,
+    Oversized,
+    Unreadable,
+}
+
 /// Read a file into the cache if it exists and is under the size limit.
-fn read_cached_file(path: &Path) -> Option<CachedFile> {
+fn read_cached_file(path: &Path) -> CachedFileRead {
     let meta = match std::fs::metadata(path) {
         Ok(meta) => meta,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return CachedFileRead::Missing,
         Err(error) => {
             warn!(
                 path = %path.display(),
                 %error,
                 "Failed to stat workspace context file; skipping"
             );
-            return None;
+            return CachedFileRead::Unreadable;
         }
     };
     if meta.len() > MAX_FILE_SIZE {
@@ -181,7 +199,7 @@ fn read_cached_file(path: &Path) -> Option<CachedFile> {
             size = meta.len(),
             "Skipping oversized context file"
         );
-        return None;
+        return CachedFileRead::Oversized;
     }
     let mtime = match meta.modified() {
         Ok(mtime) => mtime,
@@ -191,22 +209,22 @@ fn read_cached_file(path: &Path) -> Option<CachedFile> {
                 %error,
                 "Failed to read workspace context file metadata; skipping"
             );
-            return None;
+            return CachedFileRead::Unreadable;
         }
     };
     let content = match std::fs::read_to_string(path) {
         Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return CachedFileRead::Missing,
         Err(error) => {
             warn!(
                 path = %path.display(),
                 %error,
                 "Failed to read workspace context file; skipping"
             );
-            return None;
+            return CachedFileRead::Unreadable;
         }
     };
-    Some(CachedFile { content, mtime })
+    CachedFileRead::Loaded(CachedFile { content, mtime })
 }
 
 /// Detect project type from marker files in the root.
@@ -488,6 +506,43 @@ mod tests {
 
         let ctx = WorkspaceContext::detect(&dir);
         assert!(!ctx.cache.contains_key("AGENTS.md"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_get_file_keeps_cached_content_when_refresh_becomes_unreadable() {
+        let dir = std::env::temp_dir().join("openfang_ws_cache_unreadable_refresh_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("SOUL.md"), "original soul").unwrap();
+
+        let mut ctx = WorkspaceContext::detect(&dir);
+        assert_eq!(ctx.get_file("SOUL.md"), Some("original soul"));
+
+        std::fs::remove_file(dir.join("SOUL.md")).unwrap();
+        std::fs::create_dir_all(dir.join("SOUL.md")).unwrap();
+
+        assert_eq!(ctx.get_file("SOUL.md"), Some("original soul"));
+        assert!(ctx.cache.contains_key("SOUL.md"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_get_file_removes_cached_content_when_file_disappears() {
+        let dir = std::env::temp_dir().join("openfang_ws_cache_missing_refresh_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("SOUL.md"), "original soul").unwrap();
+
+        let mut ctx = WorkspaceContext::detect(&dir);
+        assert_eq!(ctx.get_file("SOUL.md"), Some("original soul"));
+
+        std::fs::remove_file(dir.join("SOUL.md")).unwrap();
+
+        assert_eq!(ctx.get_file("SOUL.md"), None);
+        assert!(!ctx.cache.contains_key("SOUL.md"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
