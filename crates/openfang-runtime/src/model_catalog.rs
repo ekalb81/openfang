@@ -453,8 +453,22 @@ fn unix_now_secs() -> i64 {
 
 /// Read and parse JSON from a file path.
 fn read_json_file(path: &PathBuf) -> Option<serde_json::Value> {
-    let content = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&content).ok()
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(error) => {
+            warn!(path = %path.display(), %error, "Failed to read credential JSON file; ignoring cached credentials");
+            return None;
+        }
+    };
+
+    match serde_json::from_str(&content) {
+        Ok(parsed) => Some(parsed),
+        Err(error) => {
+            warn!(path = %path.display(), %error, "Failed to parse credential JSON file; ignoring cached credentials");
+            None
+        }
+    }
 }
 
 /// Returns true if the credential expiry (unix seconds or ms) is still valid.
@@ -4439,6 +4453,35 @@ mod tests {
             .collect();
         assert_eq!(custom_models.len(), 1);
         assert_eq!(custom_models[0].id, "existing-custom");
+
+        std::fs::remove_dir_all(&temp_root).unwrap();
+    }
+
+    #[test]
+    fn test_read_json_file_returns_none_for_invalid_json() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "openfang-model-catalog-read-json-invalid-{}",
+            Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&temp_root).unwrap();
+        let path = temp_root.join("credentials.json");
+        std::fs::write(&path, "{ definitely not valid json }").unwrap();
+
+        assert!(read_json_file(&path).is_none());
+
+        std::fs::remove_dir_all(&temp_root).unwrap();
+    }
+
+    #[test]
+    fn test_read_json_file_returns_none_for_missing_file() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "openfang-model-catalog-read-json-missing-{}",
+            Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&temp_root).unwrap();
+        let path = temp_root.join("credentials.json");
+
+        assert!(read_json_file(&path).is_none());
 
         std::fs::remove_dir_all(&temp_root).unwrap();
     }
