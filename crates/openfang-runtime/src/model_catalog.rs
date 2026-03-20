@@ -348,11 +348,9 @@ impl ModelCatalog {
     ///
     /// Merges them into the catalog. Skips models that already exist.
     pub fn load_custom_models(&mut self, path: &std::path::Path) {
-        if !path.exists() {
-            return;
-        }
         let data = match std::fs::read_to_string(path) {
             Ok(data) => data,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
             Err(error) => {
                 warn!(path = %path.display(), %error, "Failed to read custom models file; skipping load");
                 return;
@@ -4403,6 +4401,31 @@ mod tests {
         std::fs::create_dir_all(&temp_root).unwrap();
         let path = temp_root.join("custom-models.json");
         std::fs::write(&path, "{ definitely not valid json }").unwrap();
+
+        let mut catalog = ModelCatalog::new();
+        assert!(catalog.add_custom_model(sample_custom_model("existing-custom")));
+
+        catalog.load_custom_models(&path);
+
+        let custom_models: Vec<_> = catalog
+            .models_by_provider("custom-provider")
+            .into_iter()
+            .filter(|entry| entry.tier == ModelTier::Custom)
+            .collect();
+        assert_eq!(custom_models.len(), 1);
+        assert_eq!(custom_models[0].id, "existing-custom");
+
+        std::fs::remove_dir_all(&temp_root).unwrap();
+    }
+
+    #[test]
+    fn test_load_custom_models_missing_file_preserves_existing_custom_models() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "openfang-model-catalog-missing-test-{}",
+            Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&temp_root).unwrap();
+        let path = temp_root.join("custom-models.json");
 
         let mut catalog = ModelCatalog::new();
         assert!(catalog.add_custom_model(sample_custom_model("existing-custom")));
