@@ -229,24 +229,28 @@ fn read_cached_file(path: &Path) -> CachedFileRead {
 
 /// Detect project type from marker files in the root.
 fn detect_project_type(root: &Path) -> ProjectType {
-    if root.join("Cargo.toml").exists() {
+    if is_file(root, "Cargo.toml") {
         ProjectType::Rust
-    } else if root.join("package.json").exists() {
+    } else if is_file(root, "package.json") {
         ProjectType::Node
-    } else if root.join("pyproject.toml").exists()
-        || root.join("setup.py").exists()
-        || root.join("requirements.txt").exists()
+    } else if is_file(root, "pyproject.toml")
+        || is_file(root, "setup.py")
+        || is_file(root, "requirements.txt")
     {
         ProjectType::Python
-    } else if root.join("go.mod").exists() {
+    } else if is_file(root, "go.mod") {
         ProjectType::Go
-    } else if root.join("pom.xml").exists() || root.join("build.gradle").exists() {
+    } else if is_file(root, "pom.xml") || is_file(root, "build.gradle") {
         ProjectType::Java
     } else if has_extension_in_dir(root, "csproj") || has_extension_in_dir(root, "sln") {
         ProjectType::DotNet
     } else {
         ProjectType::Unknown
     }
+}
+
+fn is_file(root: &Path, name: &str) -> bool {
+    root.join(name).is_file()
 }
 
 /// Check if any file with the given extension exists in a directory.
@@ -458,6 +462,35 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(detect_project_type(&dir), ProjectType::Unknown);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_detect_project_type_ignores_directory_markers() {
+        let dir = std::env::temp_dir().join("openfang_ws_marker_dirs_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Cargo.toml")).unwrap();
+        std::fs::create_dir_all(dir.join("package.json")).unwrap();
+        std::fs::create_dir_all(dir.join("pyproject.toml")).unwrap();
+        std::fs::create_dir_all(dir.join("go.mod")).unwrap();
+        std::fs::create_dir_all(dir.join("pom.xml")).unwrap();
+        std::fs::create_dir_all(dir.join("Example.csproj")).unwrap();
+        std::fs::create_dir_all(dir.join("Example.sln")).unwrap();
+
+        assert_eq!(detect_project_type(&dir), ProjectType::Unknown);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_detect_project_type_prefers_real_file_over_directory_marker() {
+        let dir = std::env::temp_dir().join("openfang_ws_real_file_over_dir_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Cargo.toml")).unwrap();
+        std::fs::write(dir.join("package.json"), "{}").unwrap();
+
+        assert_eq!(detect_project_type(&dir), ProjectType::Node);
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 
