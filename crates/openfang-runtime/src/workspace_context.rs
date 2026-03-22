@@ -257,6 +257,12 @@ fn is_file(root: &Path, name: &str) -> bool {
 fn has_extension_in_dir(dir: &Path, ext: &str) -> bool {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if !file_type.is_file() {
+                continue;
+            }
             if let Some(e) = entry.path().extension() {
                 if e == ext {
                     return true;
@@ -453,6 +459,19 @@ mod tests {
         )
         .unwrap();
         assert_eq!(detect_project_type(&dir), ProjectType::DotNet);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_has_extension_in_dir_ignores_directories() {
+        let dir = std::env::temp_dir().join("openfang_ws_dotnet_marker_dir_only_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Example.csproj")).unwrap();
+        std::fs::create_dir_all(dir.join("Nested.sln")).unwrap();
+
+        assert!(!has_extension_in_dir(&dir, "csproj"));
+        assert!(!has_extension_in_dir(&dir, "sln"));
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 
