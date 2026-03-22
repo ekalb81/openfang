@@ -129,8 +129,8 @@ pub async fn run_python_agent(
     // SECURITY: Validate script path (no traversal, must be .py)
     validate_script_path(script_path)?;
 
-    // Validate script exists
-    if !Path::new(script_path).exists() {
+    // Validate script exists as a real file.
+    if !Path::new(script_path).is_file() {
         return Err(PythonError::ScriptNotFound(script_path.to_string()));
     }
 
@@ -421,5 +421,26 @@ mod tests {
         )
         .await;
         assert!(matches!(result, Err(PythonError::ScriptNotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_run_python_directory_is_not_treated_as_script() {
+        let dir = std::env::temp_dir().join("openfang_python_runtime_directory_script_test.py");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let config = PythonConfig::default();
+        let result = run_python_agent(
+            dir.to_str().unwrap(),
+            "test-agent",
+            "hello",
+            &serde_json::json!({}),
+            &config,
+        )
+        .await;
+
+        assert!(matches!(result, Err(PythonError::ScriptNotFound(_))));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
