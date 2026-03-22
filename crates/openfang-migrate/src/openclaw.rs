@@ -31,6 +31,16 @@ fn is_regular_file(path: &Path) -> bool {
     path.is_file()
 }
 
+fn is_directory(path: &Path) -> bool {
+    path.is_dir()
+}
+
+fn looks_like_openclaw_home(path: &Path) -> bool {
+    find_config_file(path).is_some()
+        || is_directory(&path.join("sessions"))
+        || is_directory(&path.join("memory"))
+}
+
 // ---------------------------------------------------------------------------
 // OpenClaw JSON5 input types
 // ---------------------------------------------------------------------------
@@ -965,7 +975,7 @@ pub fn detect_openclaw_home() -> Option<PathBuf> {
     // Check env override first
     if let Ok(dir) = std::env::var("OPENCLAW_STATE_DIR") {
         let p = PathBuf::from(dir);
-        if p.exists() && p.is_dir() {
+        if is_directory(&p) {
             return Some(p);
         }
     }
@@ -990,15 +1000,8 @@ pub fn detect_openclaw_home() -> Option<PathBuf> {
     }
 
     for candidate in candidates.into_iter().flatten() {
-        if candidate.exists() && candidate.is_dir() {
-            // Verify it looks like an OpenClaw workspace
-            if find_config_file(&candidate).is_some() {
-                return Some(candidate);
-            }
-            // Also accept if it has agents or sessions dirs
-            if candidate.join("sessions").exists() || candidate.join("memory").exists() {
-                return Some(candidate);
-            }
+        if is_directory(&candidate) && looks_like_openclaw_home(&candidate) {
+            return Some(candidate);
         }
     }
 
@@ -3898,6 +3901,22 @@ mod tests {
         let found = find_config_file(dir3.path());
         assert!(found.is_some());
         assert!(found.unwrap().ends_with("config.yaml"));
+    }
+
+    #[test]
+    fn test_looks_like_openclaw_home_requires_real_sessions_or_memory_dirs() {
+        let source = TempDir::new().unwrap();
+        assert!(!looks_like_openclaw_home(source.path()));
+
+        std::fs::write(source.path().join("sessions"), "not a directory").unwrap();
+        std::fs::write(source.path().join("memory"), "also not a directory").unwrap();
+        assert!(source.path().join("sessions").exists());
+        assert!(source.path().join("memory").exists());
+        assert!(!looks_like_openclaw_home(source.path()));
+
+        std::fs::remove_file(source.path().join("sessions")).unwrap();
+        std::fs::create_dir(source.path().join("sessions")).unwrap();
+        assert!(looks_like_openclaw_home(source.path()));
     }
 
     #[test]
