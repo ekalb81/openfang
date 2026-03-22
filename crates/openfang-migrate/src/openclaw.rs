@@ -1229,7 +1229,7 @@ fn scan_from_legacy_yaml(path: &Path, result: &mut ScanResult) {
 
     // Scan channels from messaging/ dir — all 13 possible channels
     let messaging_dir = path.join("messaging");
-    if messaging_dir.exists() {
+    if is_directory(&messaging_dir) {
         for name in &[
             "telegram",
             "discord",
@@ -1246,7 +1246,7 @@ fn scan_from_legacy_yaml(path: &Path, result: &mut ScanResult) {
             "bluebubbles",
             "email",
         ] {
-            if messaging_dir.join(format!("{name}.yaml")).exists() {
+            if is_regular_file(&messaging_dir.join(format!("{name}.yaml"))) {
                 result.channels.push(name.to_string());
             }
         }
@@ -4637,6 +4637,23 @@ mod tests {
         let result = scan_openclaw_workspace(source.path());
         assert!(result.has_config);
         assert!(result.agents.is_empty(), "directory-shaped agent.yaml should be ignored");
+    }
+
+    #[test]
+    fn test_scan_workspace_ignores_non_file_legacy_channel_markers() {
+        let source = TempDir::new().unwrap();
+        create_legacy_yaml_workspace(source.path());
+
+        let messaging_dir = source.path().join("messaging");
+        std::fs::remove_file(messaging_dir.join("telegram.yaml")).unwrap();
+        std::fs::create_dir(messaging_dir.join("telegram.yaml")).unwrap();
+
+        let result = scan_openclaw_workspace(source.path());
+        assert!(result.has_config);
+        assert!(
+            !result.channels.contains(&"telegram".to_string()),
+            "directory-shaped telegram.yaml should be ignored"
+        );
     }
 
     #[test]
