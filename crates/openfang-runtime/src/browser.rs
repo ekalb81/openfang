@@ -671,23 +671,29 @@ impl Drop for BrowserSession {
 
 // ── Chromium discovery ─────────────────────────────────────────────────────
 
+fn is_browser_binary_path(path: &std::path::Path) -> bool {
+    path.is_file()
+}
+
 /// Find a Chromium-based browser binary on this system.
 fn find_chromium(config: &BrowserConfig) -> Result<PathBuf, String> {
     // 1. User-configured path
     if let Some(ref path) = config.chromium_path {
         if !path.is_empty() {
             let p = PathBuf::from(path);
-            if p.exists() {
+            if is_browser_binary_path(&p) {
                 return Ok(p);
             }
-            return Err(format!("Configured chromium_path not found: {path}"));
+            return Err(format!(
+                "Configured chromium_path is not a file: {path}"
+            ));
         }
     }
 
     // 2. CHROME_PATH env var
     if let Ok(path) = std::env::var("CHROME_PATH") {
         let p = PathBuf::from(&path);
-        if p.exists() {
+        if is_browser_binary_path(&p) {
             return Ok(p);
         }
     }
@@ -696,7 +702,7 @@ fn find_chromium(config: &BrowserConfig) -> Result<PathBuf, String> {
     let candidates = chromium_candidates();
     for candidate in &candidates {
         let p = PathBuf::from(candidate);
-        if p.exists() {
+        if is_browser_binary_path(&p) {
             return Ok(p);
         }
     }
@@ -1214,6 +1220,35 @@ mod tests {
         assert_eq!(config.idle_timeout_secs, 300);
         assert_eq!(config.max_sessions, 5);
         assert!(config.chromium_path.is_none());
+    }
+
+    #[test]
+    fn test_find_chromium_accepts_real_configured_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let browser_path = dir.path().join("chromium");
+        std::fs::write(&browser_path, b"#!/bin/sh\n").unwrap();
+
+        let config = BrowserConfig {
+            chromium_path: Some(browser_path.to_string_lossy().to_string()),
+            ..BrowserConfig::default()
+        };
+
+        assert_eq!(find_chromium(&config).unwrap(), browser_path);
+    }
+
+    #[test]
+    fn test_find_chromium_rejects_directory_configured_path() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let fake_browser_dir = dir.path().join("chromium");
+        std::fs::create_dir(&fake_browser_dir).unwrap();
+
+        let config = BrowserConfig {
+            chromium_path: Some(fake_browser_dir.to_string_lossy().to_string()),
+            ..BrowserConfig::default()
+        };
+
+        let error = find_chromium(&config).unwrap_err();
+        assert!(error.contains("is not a file"));
     }
 
     #[test]
