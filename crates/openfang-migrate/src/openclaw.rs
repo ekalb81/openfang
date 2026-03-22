@@ -2635,7 +2635,7 @@ fn migrate_legacy_config(
     report: &mut MigrationReport,
 ) -> Result<(), MigrateError> {
     let config_path = source.join("config.yaml");
-    if !config_path.exists() {
+    if !is_regular_file(&config_path) {
         report
             .warnings
             .push("No config.yaml found in OpenClaw workspace".to_string());
@@ -2704,7 +2704,7 @@ fn parse_legacy_channels(
     report: &mut MigrationReport,
 ) -> Result<Option<toml::Value>, MigrateError> {
     let messaging_dir = source.join("messaging");
-    if !messaging_dir.exists() {
+    if !is_directory(&messaging_dir) {
         return Ok(None);
     }
 
@@ -2729,7 +2729,7 @@ fn parse_legacy_channels(
         "bluebubbles",
     ] {
         let yaml_path = messaging_dir.join(format!("{name}.yaml"));
-        if !yaml_path.exists() {
+        if !is_regular_file(&yaml_path) {
             continue;
         }
 
@@ -5040,6 +5040,38 @@ mod tests {
             .imported
             .iter()
             .any(|item| item.kind == ItemKind::Channel && item.name == "telegram"));
+    }
+
+    #[test]
+    fn test_legacy_config_ignores_directory_shaped_config_yaml() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        std::fs::create_dir(source.path().join("config.yaml")).unwrap();
+
+        let mut report = MigrationReport::default();
+        migrate_legacy_config(source.path(), target.path(), false, None, &mut report).unwrap();
+
+        assert!(report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("No config.yaml found")));
+        assert!(!target.path().join("config.toml").exists());
+    }
+
+    #[test]
+    fn test_legacy_channels_ignore_directory_shaped_yaml_markers() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let messaging_dir = source.path().join("messaging");
+        std::fs::create_dir_all(&messaging_dir).unwrap();
+        std::fs::create_dir(messaging_dir.join("telegram.yaml")).unwrap();
+
+        let mut report = MigrationReport::default();
+        let channels = parse_legacy_channels(source.path(), target.path(), false, &mut report)
+            .unwrap();
+
+        assert!(channels.is_none());
+        assert!(report.imported.is_empty());
     }
 
     #[test]
