@@ -2995,7 +2995,7 @@ fn migrate_legacy_agents(
     report: &mut MigrationReport,
 ) -> Result<(), MigrateError> {
     let agents_dir = source.join("agents");
-    if !agents_dir.exists() {
+    if !agents_dir.is_dir() {
         report
             .warnings
             .push("No agents/ directory found".to_string());
@@ -3011,7 +3011,7 @@ fn migrate_legacy_agents(
         }
 
         let agent_yaml = path.join("agent.yaml");
-        if !agent_yaml.exists() {
+        if !agent_yaml.is_file() {
             continue;
         }
 
@@ -4410,6 +4410,37 @@ mod tests {
         assert!(!target.path().join("channels_import.toml").exists());
 
         assert!(target.path().join("migration_report.md").exists());
+    }
+
+    #[test]
+    fn test_migrate_legacy_agents_ignores_non_file_agent_yaml_markers() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let malformed_agent_dir = source.path().join("agents").join("broken-agent");
+        std::fs::create_dir_all(malformed_agent_dir.join("agent.yaml")).unwrap();
+
+        let mut report = MigrationReport::default();
+        migrate_legacy_agents(source.path(), target.path(), false, &mut report).unwrap();
+
+        assert!(report.imported.is_empty());
+        assert!(report.skipped.is_empty());
+        assert!(!target.path().join("agents/broken-agent/agent.toml").exists());
+    }
+
+    #[test]
+    fn test_migrate_legacy_agents_ignores_file_shaped_agents_root() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        std::fs::write(source.path().join("agents"), "not a directory").unwrap();
+
+        let mut report = MigrationReport::default();
+        migrate_legacy_agents(source.path(), target.path(), false, &mut report).unwrap();
+
+        assert!(report.imported.is_empty());
+        assert!(report.skipped.is_empty());
+        assert!(report
+            .warnings
+            .contains(&"No agents/ directory found".to_string()));
     }
 
     #[test]
