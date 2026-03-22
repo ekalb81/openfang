@@ -102,9 +102,13 @@ pub struct ConvertedSkillMd {
 // SKILL.md detection and parsing
 // ---------------------------------------------------------------------------
 
+fn path_is_file(path: &Path) -> bool {
+    path.is_file()
+}
+
 /// Check if a directory contains a SKILL.md file.
 pub fn detect_skillmd(dir: &Path) -> bool {
-    dir.join("SKILL.md").exists()
+    path_is_file(&dir.join("SKILL.md"))
 }
 
 /// Parse a SKILL.md file into frontmatter and Markdown body.
@@ -356,10 +360,10 @@ pub fn convert_skillmd_str(name_hint: &str, content: &str) -> Result<ConvertedSk
 
 /// Check if a directory contains a valid OpenClaw Node.js skill.
 pub fn detect_openclaw_skill(dir: &Path) -> bool {
-    dir.join("package.json").exists()
-        && (dir.join("index.ts").exists()
-            || dir.join("index.js").exists()
-            || dir.join("dist").join("index.js").exists())
+    path_is_file(&dir.join("package.json"))
+        && (path_is_file(&dir.join("index.ts"))
+            || path_is_file(&dir.join("index.js"))
+            || path_is_file(&dir.join("dist").join("index.js")))
 }
 
 /// Convert an OpenClaw Node.js skill directory into an OpenFang SkillManifest.
@@ -377,11 +381,11 @@ pub fn convert_openclaw_skill(dir: &Path) -> Result<SkillManifest, SkillError> {
     let author = pkg["author"].as_str().unwrap_or("").to_string();
 
     // Determine entry point
-    let entry = if dir.join("dist").join("index.js").exists() {
+    let entry = if path_is_file(&dir.join("dist").join("index.js")) {
         "dist/index.js".to_string()
-    } else if dir.join("index.js").exists() {
+    } else if path_is_file(&dir.join("index.js")) {
         "index.js".to_string()
-    } else if dir.join("index.ts").exists() {
+    } else if path_is_file(&dir.join("index.ts")) {
         return Err(SkillError::RuntimeNotAvailable(
             "TypeScript skill needs to be compiled first. Run `npm run build` in the skill directory.".to_string()
         ));
@@ -493,6 +497,20 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_openclaw_skill_ignores_directory_markers() {
+        let dir = TempDir::new().unwrap();
+        std::fs::create_dir(dir.path().join("package.json")).unwrap();
+        std::fs::create_dir(dir.path().join("index.js")).unwrap();
+        assert!(!detect_openclaw_skill(dir.path()));
+
+        let valid = TempDir::new().unwrap();
+        std::fs::write(valid.path().join("package.json"), "{}").unwrap();
+        std::fs::create_dir(valid.path().join("dist")).unwrap();
+        std::fs::create_dir(valid.path().join("dist").join("index.js")).unwrap();
+        assert!(!detect_openclaw_skill(valid.path()));
+    }
+
+    #[test]
     fn test_convert_openclaw_skill() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -513,6 +531,27 @@ mod tests {
         assert_eq!(manifest.skill.version, "1.0.0");
         assert_eq!(manifest.runtime.runtime_type, SkillRuntime::Node);
         assert_eq!(manifest.tools.provided.len(), 1);
+    }
+
+    #[test]
+    fn test_convert_openclaw_skill_ignores_directory_entry_markers() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{
+                "name": "test-skill",
+                "version": "1.0.0"
+            }"#,
+        )
+        .unwrap();
+        std::fs::create_dir(dir.path().join("index.ts")).unwrap();
+        std::fs::create_dir_all(dir.path().join("dist").join("index.js")).unwrap();
+
+        let err = convert_openclaw_skill(dir.path()).unwrap_err();
+        assert!(matches!(err, SkillError::InvalidManifest(_)));
+        assert!(err
+            .to_string()
+            .contains("No index.js or dist/index.js found"));
     }
 
     #[test]
@@ -551,6 +590,13 @@ mod tests {
 
         std::fs::write(dir.path().join("SKILL.md"), "---\nname: test\n---\nbody").unwrap();
         assert!(detect_skillmd(dir.path()));
+    }
+
+    #[test]
+    fn test_detect_skillmd_ignores_directory_marker() {
+        let dir = TempDir::new().unwrap();
+        std::fs::create_dir(dir.path().join("SKILL.md")).unwrap();
+        assert!(!detect_skillmd(dir.path()));
     }
 
     #[test]
