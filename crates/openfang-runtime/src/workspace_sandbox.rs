@@ -3,6 +3,7 @@
 //! Confines agent file operations to their workspace directory.
 //! Prevents path traversal, symlink escapes, and access outside the sandbox.
 
+use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Resolve a user-supplied path within a workspace sandbox.
@@ -34,23 +35,28 @@ pub fn resolve_sandbox_path(user_path: &str, workspace_root: &Path) -> Result<Pa
         .canonicalize()
         .map_err(|e| format!("Failed to resolve workspace root: {e}"))?;
 
-    // Canonicalize the candidate (or its parent for new files)
-    let canon_candidate = if candidate.exists() {
-        candidate
+    // Canonicalize the candidate (or its parent for genuinely new files).
+    // `Path::exists()` follows symlinks and returns false for broken ones, so use
+    // `symlink_metadata()` to distinguish a missing path from a present-but-invalid
+    // symlink entry that should be rejected instead of treated as a writable new file.
+    let canon_candidate = match fs::symlink_metadata(&candidate) {
+        Ok(_) => candidate
             .canonicalize()
-            .map_err(|e| format!("Failed to resolve path: {e}"))?
-    } else {
-        // For new files: canonicalize the parent and append the filename
-        let parent = candidate
-            .parent()
-            .ok_or_else(|| "Invalid path: no parent directory".to_string())?;
-        let filename = candidate
-            .file_name()
-            .ok_or_else(|| "Invalid path: no filename".to_string())?;
-        let canon_parent = parent
-            .canonicalize()
-            .map_err(|e| format!("Failed to resolve parent directory: {e}"))?;
-        canon_parent.join(filename)
+            .map_err(|e| format!("Failed to resolve path: {e}"))?,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            // For new files: canonicalize the parent and append the filename
+            let parent = candidate
+                .parent()
+                .ok_or_else(|| "Invalid path: no parent directory".to_string())?;
+            let filename = candidate
+                .file_name()
+                .ok_or_else(|| "Invalid path: no filename".to_string())?;
+            let canon_parent = parent
+                .canonicalize()
+                .map_err(|e| format!("Failed to resolve parent directory: {e}"))?;
+            canon_parent.join(filename)
+        }
+        Err(e) => return Err(format!("Failed to inspect path: {e}")),
     };
 
     // Verify the canonical path is inside the workspace
@@ -144,5 +150,19 @@ mod tests {
         let result = resolve_sandbox_path("escape/secret.txt", dir.path());
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Access denied"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_broken_symlink_path_rejected() {
+        let dir = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let missing_target = outside.path().join("missing.txt");
+        let broken_link = dir.path().join("broken.txt");
+        std::os::unix::fs::symlink(&missing_target, &broken_link).unwrap();
+
+        let result = resolve_sandbox_path("broken.txt", dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to resolve path"));
     }
 }
