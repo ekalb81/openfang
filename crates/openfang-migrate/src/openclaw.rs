@@ -27,6 +27,10 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
+fn is_regular_file(path: &Path) -> bool {
+    path.is_file()
+}
+
 // ---------------------------------------------------------------------------
 // OpenClaw JSON5 input types
 // ---------------------------------------------------------------------------
@@ -1068,7 +1072,7 @@ fn scan_from_json5(base: &Path, config_path: &Path, result: &mut ScanResult) {
                 .unwrap_or(3);
 
             // Check physical memory dirs
-            let has_memory = base.join("memory").join(&id).join("MEMORY.md").exists();
+            let has_memory = is_regular_file(&base.join("memory").join(&id).join("MEMORY.md"));
             let has_sessions = base.join("sessions").exists();
             let has_workspace = base.join("workspaces").join(&id).exists();
 
@@ -1149,7 +1153,7 @@ fn scan_from_json5(base: &Path, config_path: &Path, result: &mut ScanResult) {
     if memory_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&memory_dir) {
             for entry in entries.flatten() {
-                if entry.path().is_dir() && entry.path().join("MEMORY.md").exists() {
+                if entry.path().is_dir() && is_regular_file(&entry.path().join("MEMORY.md")) {
                     result.has_memory = true;
                     break;
                 }
@@ -1178,7 +1182,7 @@ fn scan_from_legacy_yaml(path: &Path, result: &mut ScanResult) {
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_default();
 
-                let has_memory = agent_path.join("MEMORY.md").exists();
+                let has_memory = is_regular_file(&agent_path.join("MEMORY.md"));
                 let has_sessions = agent_path.join("sessions").exists();
                 let has_workspace = agent_path.join("workspace").exists();
 
@@ -2238,7 +2242,7 @@ fn migrate_memory_files(
                     continue;
                 }
                 let memory_md = path.join("MEMORY.md");
-                if !memory_md.exists() {
+                if !is_regular_file(&memory_md) {
                     continue;
                 }
 
@@ -2291,7 +2295,7 @@ fn migrate_memory_files(
                 }
 
                 let memory_md = path.join("MEMORY.md");
-                if !memory_md.exists() {
+                if !is_regular_file(&memory_md) {
                     continue;
                 }
 
@@ -2320,7 +2324,7 @@ fn migrate_memory_files(
     // Warn about agents with no memory found
     for id in &agent_ids {
         if !migrated.contains(id) {
-            let has_in_agents = source.join("agents").join(id).join("MEMORY.md").exists();
+            let has_in_agents = is_regular_file(&source.join("agents").join(id).join("MEMORY.md"));
             if !has_in_agents {
                 // not an error, just informational
             }
@@ -3193,7 +3197,7 @@ fn migrate_legacy_memory(
         }
 
         let memory_md = path.join("MEMORY.md");
-        if !memory_md.exists() {
+        if !is_regular_file(&memory_md) {
             continue;
         }
 
@@ -3980,6 +3984,47 @@ mod tests {
         let c2 = std::fs::read_to_string(target.path().join("agents/agent2/imported_memory.md"))
             .unwrap();
         assert!(c2.contains("layout 2"));
+    }
+
+    #[test]
+    fn test_directory_shaped_memory_markers_are_ignored() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+
+        let json5_content = r#"{
+  agents: {
+    list: [
+      { id: "agent1" },
+      { id: "agent2" }
+    ]
+  }
+}"#;
+        std::fs::write(source.path().join("openclaw.json"), json5_content).unwrap();
+
+        let mem1 = source.path().join("memory").join("agent1").join("MEMORY.md");
+        std::fs::create_dir_all(&mem1).unwrap();
+
+        let mem2 = source.path().join("agents").join("agent2").join("MEMORY.md");
+        std::fs::create_dir_all(&mem2).unwrap();
+
+        let scan = scan_openclaw_workspace(source.path());
+        assert!(!scan.has_memory);
+        assert!(scan.agents.iter().all(|agent| !agent.has_memory));
+
+        let options = MigrateOptions {
+            source: crate::MigrateSource::OpenClaw,
+            source_dir: source.path().to_path_buf(),
+            target_dir: target.path().to_path_buf(),
+            dry_run: false,
+        };
+
+        let report = migrate(&options).unwrap();
+        assert!(report
+            .imported
+            .iter()
+            .all(|item| item.kind != ItemKind::Memory));
+        assert!(!target.path().join("agents/agent1/imported_memory.md").exists());
+        assert!(!target.path().join("agents/agent2/imported_memory.md").exists());
     }
 
     #[test]
