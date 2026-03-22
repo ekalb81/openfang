@@ -12,6 +12,10 @@ fn manifest_path_is_file(path: &Path) -> bool {
     path.is_file()
 }
 
+fn skills_root_is_dir(path: &Path) -> bool {
+    path.is_dir()
+}
+
 /// Registry of installed skills.
 #[derive(Debug, Default)]
 pub struct SkillRegistry {
@@ -108,7 +112,7 @@ impl SkillRegistry {
 
     /// Load all installed skills from the skills directory.
     pub fn load_all(&mut self) -> Result<usize, SkillError> {
-        if !self.skills_dir.exists() {
+        if !skills_root_is_dir(&self.skills_dir) {
             return Ok(0);
         }
 
@@ -301,7 +305,7 @@ impl SkillRegistry {
         &mut self,
         workspace_skills_dir: &Path,
     ) -> Result<usize, SkillError> {
-        if !workspace_skills_dir.exists() {
+        if !skills_root_is_dir(workspace_skills_dir) {
             return Ok(0);
         }
         if self.frozen {
@@ -487,6 +491,32 @@ input_schema = {{ type = "object" }}
         let dir = TempDir::new().unwrap();
         let mut registry = SkillRegistry::new(dir.path().to_path_buf());
         assert_eq!(registry.load_all().unwrap(), 0);
+    }
+
+    #[test]
+    fn test_load_all_ignores_file_shaped_skills_root() {
+        let dir = TempDir::new().unwrap();
+        let skills_root = dir.path().join("skills-root");
+        std::fs::write(&skills_root, "not a directory").unwrap();
+
+        let mut registry = SkillRegistry::new(skills_root);
+        let count = registry.load_all().unwrap();
+
+        assert_eq!(count, 0);
+        assert_eq!(registry.count(), 0);
+    }
+
+    #[test]
+    fn test_load_workspace_skills_ignores_file_shaped_root() {
+        let dir = TempDir::new().unwrap();
+        let workspace_skills_root = dir.path().join("workspace-skills-root");
+        std::fs::write(&workspace_skills_root, "not a directory").unwrap();
+
+        let mut registry = SkillRegistry::default();
+        let count = registry.load_workspace_skills(&workspace_skills_root).unwrap();
+
+        assert_eq!(count, 0);
+        assert_eq!(registry.count(), 0);
     }
 
     #[test]
