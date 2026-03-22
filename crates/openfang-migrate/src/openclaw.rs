@@ -690,13 +690,13 @@ fn find_config_file(dir: &Path) -> Option<PathBuf> {
         "moltbot.json",
     ] {
         let p = dir.join(name);
-        if p.exists() {
+        if is_regular_file(&p) {
             return Some(p);
         }
     }
     // Fall back to YAML (very old installs)
     let yaml = dir.join("config.yaml");
-    if yaml.exists() {
+    if is_regular_file(&yaml) {
         return Some(yaml);
     }
     None
@@ -4686,6 +4686,23 @@ mod tests {
         assert!(result.channels.contains(&"imessage".to_string()));
         assert!(result.channels.contains(&"bluebubbles".to_string()));
         assert!(result.has_memory);
+    }
+
+    #[test]
+    fn test_scan_workspace_ignores_non_file_config_markers() {
+        let source = TempDir::new().unwrap();
+
+        std::fs::create_dir(source.path().join("openclaw.json")).unwrap();
+        std::fs::create_dir(source.path().join("config.yaml")).unwrap();
+
+        let result = scan_openclaw_workspace(source.path());
+        assert!(
+            !result.has_config,
+            "directory-shaped config markers should not count as workspace config"
+        );
+        assert!(result.agents.is_empty());
+        assert!(result.channels.is_empty());
+        assert!(!result.has_memory);
     }
 
     #[test]
