@@ -659,7 +659,7 @@ impl ClawHubClient {
     /// Check if a ClawHub skill is already installed locally.
     pub fn is_installed(&self, slug: &str, skills_dir: &Path) -> bool {
         let skill_dir = skills_dir.join(slug);
-        skill_dir.join("skill.toml").exists()
+        skill_dir.join("skill.toml").is_file()
     }
 }
 
@@ -705,6 +705,7 @@ fn which_check(name: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_browse_entry_serde_real_format() {
@@ -906,5 +907,20 @@ mod tests {
             }),
         };
         assert_eq!(ClawHubClient::entry_version(&entry), "2.0.0");
+    }
+
+    #[test]
+    fn test_is_installed_requires_real_manifest_file() {
+        let dir = TempDir::new().unwrap();
+        let client = ClawHubClient::new(dir.path().join("cache"));
+        let skill_dir = dir.path().join("demo-skill");
+        std::fs::create_dir_all(skill_dir.join("skill.toml")).unwrap();
+
+        assert!(!client.is_installed("demo-skill", dir.path()));
+
+        std::fs::remove_dir_all(skill_dir.join("skill.toml")).unwrap();
+        std::fs::write(skill_dir.join("skill.toml"), "[skill]\nname='demo'\n").unwrap();
+
+        assert!(client.is_installed("demo-skill", dir.path()));
     }
 }

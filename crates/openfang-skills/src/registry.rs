@@ -8,6 +8,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
+fn manifest_path_is_file(path: &Path) -> bool {
+    path.is_file()
+}
+
 /// Registry of installed skills.
 #[derive(Debug, Default)]
 pub struct SkillRegistry {
@@ -118,7 +122,7 @@ impl SkillRegistry {
             }
 
             let manifest_path = path.join("skill.toml");
-            if !manifest_path.exists() {
+            if !manifest_path_is_file(&manifest_path) {
                 // Auto-detect SKILL.md and convert to skill.toml + prompt_context.md
                 if openclaw_compat::detect_skillmd(&path) {
                     match openclaw_compat::convert_skillmd(&path) {
@@ -316,7 +320,7 @@ impl SkillRegistry {
             }
 
             let manifest_path = path.join("skill.toml");
-            if !manifest_path.exists() {
+            if !manifest_path_is_file(&manifest_path) {
                 // Auto-detect SKILL.md and convert
                 if openclaw_compat::detect_skillmd(&path) {
                     match openclaw_compat::convert_skillmd(&path) {
@@ -548,5 +552,31 @@ input_schema = {{ type = "object" }}
 
         // Verify that skill.toml was written
         assert!(skill_dir.join("skill.toml").exists());
+    }
+
+    #[test]
+    fn test_load_all_ignores_directory_shaped_skill_toml() {
+        let dir = TempDir::new().unwrap();
+        let skill_dir = dir.path().join("bad-skill");
+        std::fs::create_dir_all(skill_dir.join("skill.toml")).unwrap();
+
+        let mut registry = SkillRegistry::new(dir.path().to_path_buf());
+        let count = registry.load_all().unwrap();
+
+        assert_eq!(count, 0);
+        assert!(registry.get("bad-skill").is_none());
+    }
+
+    #[test]
+    fn test_load_workspace_skills_ignores_directory_shaped_skill_toml() {
+        let dir = TempDir::new().unwrap();
+        let skill_dir = dir.path().join("workspace-bad-skill");
+        std::fs::create_dir_all(skill_dir.join("skill.toml")).unwrap();
+
+        let mut registry = SkillRegistry::default();
+        let count = registry.load_workspace_skills(dir.path()).unwrap();
+
+        assert_eq!(count, 0);
+        assert!(registry.get("workspace-bad-skill").is_none());
     }
 }
