@@ -3298,8 +3298,8 @@ fn scan_legacy_skills(source: &Path, report: &mut MigrationReport) {
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_default();
 
-                let has_package_json = path.join("package.json").exists();
-                let has_index = path.join("index.ts").exists() || path.join("index.js").exists();
+                let has_package_json = path.join("package.json").is_file();
+                let has_index = path.join("index.ts").is_file() || path.join("index.js").is_file();
 
                 if has_package_json && has_index {
                     report.skipped.push(SkippedItem {
@@ -4033,6 +4033,40 @@ mod tests {
             .any(|s| s.name == "auth-profiles.json"));
         assert!(report.skipped.iter().any(|s| s.name == "session"));
         assert!(report.skipped.iter().any(|s| s.name == "memory"));
+    }
+
+    #[test]
+    fn test_scan_legacy_skills_ignores_directory_markers() {
+        let source = TempDir::new().unwrap();
+        let skills_dir = source.path().join("skills");
+        let fake_node_skill = skills_dir.join("fake-node-skill");
+        std::fs::create_dir_all(fake_node_skill.join("package.json")).unwrap();
+        std::fs::create_dir_all(fake_node_skill.join("index.js")).unwrap();
+
+        let real_node_skill = skills_dir.join("real-node-skill");
+        std::fs::create_dir_all(&real_node_skill).unwrap();
+        std::fs::write(real_node_skill.join("package.json"), "{}\n").unwrap();
+        std::fs::write(real_node_skill.join("index.js"), "console.log('ok');\n").unwrap();
+
+        let mut report = MigrationReport::default();
+        scan_legacy_skills(source.path(), &mut report);
+
+        let fake_entry = report
+            .skipped
+            .iter()
+            .find(|s| s.name == "fake-node-skill")
+            .expect("fake-node-skill should be reported");
+        assert_eq!(fake_entry.reason, "Unknown skill format");
+
+        let real_entry = report
+            .skipped
+            .iter()
+            .find(|s| s.name == "real-node-skill")
+            .expect("real-node-skill should be reported");
+        assert_eq!(
+            real_entry.reason,
+            "Node.js skill — run with `openfang skill install` after migration"
+        );
     }
 
     #[test]
