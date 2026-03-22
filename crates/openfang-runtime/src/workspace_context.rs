@@ -76,8 +76,8 @@ impl WorkspaceContext {
     /// Detect workspace context from the given root directory.
     pub fn detect(root: &Path) -> Self {
         let project_type = detect_project_type(root);
-        let is_git_repo = root.join(".git").exists();
-        let has_openfang_dir = root.join(".openfang").exists();
+        let is_git_repo = root.join(".git").is_dir();
+        let has_openfang_dir = root.join(".openfang").is_dir();
 
         let mut cache = HashMap::new();
         for &name in CONTEXT_FILES {
@@ -526,6 +526,32 @@ mod tests {
         assert_eq!(ctx.project_type, ProjectType::Rust);
         assert!(ctx.is_git_repo);
         assert!(ctx.cache.contains_key("AGENTS.md"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_workspace_context_detect_ignores_git_file_marker() {
+        let dir = std::env::temp_dir().join("openfang_ws_git_file_marker_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(".git"), "not a directory").unwrap();
+
+        let ctx = WorkspaceContext::detect(&dir);
+        assert!(!ctx.is_git_repo);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_workspace_context_detect_ignores_openfang_file_marker() {
+        let dir = std::env::temp_dir().join("openfang_ws_openfang_file_marker_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(".openfang"), "not a directory").unwrap();
+
+        let ctx = WorkspaceContext::detect(&dir);
+        assert!(!ctx.has_openfang_dir);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
