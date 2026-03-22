@@ -355,6 +355,11 @@ const BLOCKED_MOUNT_PATHS: &[&str] = &[
     "/boot",
 ];
 
+fn path_matches_blocked_prefix(path: &Path, blocked_prefix: &str) -> bool {
+    let blocked = Path::new(blocked_prefix);
+    path == blocked || path.starts_with(blocked)
+}
+
 /// Validate a bind mount path for security.
 ///
 /// Blocks:
@@ -380,7 +385,7 @@ pub fn validate_bind_mount(path: &str, blocked: &[String]) -> Result<(), String>
 
     // Check default blocked paths
     for blocked_path in BLOCKED_MOUNT_PATHS {
-        if path.starts_with(blocked_path) {
+        if path_matches_blocked_prefix(p, blocked_path) {
             return Err(format!(
                 "Bind mount to '{blocked_path}' is blocked for security"
             ));
@@ -389,7 +394,7 @@ pub fn validate_bind_mount(path: &str, blocked: &[String]) -> Result<(), String>
 
     // Check user-configured blocked paths
     for bp in blocked {
-        if path.starts_with(bp.as_str()) {
+        if path_matches_blocked_prefix(p, bp) {
             return Err(format!("Bind mount to '{bp}' is blocked by configuration"));
         }
     }
@@ -400,7 +405,7 @@ pub fn validate_bind_mount(path: &str, blocked: &[String]) -> Result<(), String>
             Ok(canonical) => {
                 let canonical_str = canonical.to_string_lossy();
                 for blocked_path in BLOCKED_MOUNT_PATHS {
-                    if canonical_str.starts_with(blocked_path) {
+                    if path_matches_blocked_prefix(&canonical, blocked_path) {
                         return Err(format!(
                             "Bind mount resolves to blocked path via symlink: {} → {}",
                             path, canonical_str
@@ -605,6 +610,13 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_bind_mount_prefix_lookalikes_allowed() {
+        assert!(validate_bind_mount("/etc2/config", &[]).is_ok());
+        assert!(validate_bind_mount("/procfs/data", &[]).is_ok());
+        assert!(validate_bind_mount("/syslog/archive", &[]).is_ok());
+    }
+
+    #[test]
     fn test_validate_bind_mount_traversal() {
         assert!(validate_bind_mount("/home/user/../etc/passwd", &[]).is_err());
     }
@@ -614,6 +626,13 @@ mod tests {
         let blocked = vec!["/data/secrets".to_string()];
         assert!(validate_bind_mount("/data/secrets/vault", &blocked).is_err());
         assert!(validate_bind_mount("/data/public", &blocked).is_ok());
+    }
+
+    #[test]
+    fn test_validate_bind_mount_custom_prefix_lookalikes_allowed() {
+        let blocked = vec!["/data/secrets".to_string()];
+        assert!(validate_bind_mount("/data/secrets-backup", &blocked).is_ok());
+        assert!(validate_bind_mount("/data/secrets_archive/daily", &blocked).is_ok());
     }
 
     #[test]
