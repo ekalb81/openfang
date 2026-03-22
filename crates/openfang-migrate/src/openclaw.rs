@@ -1076,8 +1076,8 @@ fn scan_from_json5(base: &Path, config_path: &Path, result: &mut ScanResult) {
 
             // Check physical memory dirs
             let has_memory = is_regular_file(&base.join("memory").join(&id).join("MEMORY.md"));
-            let has_sessions = base.join("sessions").exists();
-            let has_workspace = base.join("workspaces").join(&id).exists();
+            let has_sessions = is_directory(&base.join("sessions"));
+            let has_workspace = is_directory(&base.join("workspaces").join(&id));
 
             if has_memory {
                 result.has_memory = true;
@@ -1176,7 +1176,7 @@ fn scan_from_legacy_yaml(path: &Path, result: &mut ScanResult) {
                     continue;
                 }
                 let agent_yaml = agent_path.join("agent.yaml");
-                if !agent_yaml.exists() {
+                if !is_regular_file(&agent_yaml) {
                     continue;
                 }
 
@@ -1186,8 +1186,8 @@ fn scan_from_legacy_yaml(path: &Path, result: &mut ScanResult) {
                     .unwrap_or_default();
 
                 let has_memory = is_regular_file(&agent_path.join("MEMORY.md"));
-                let has_sessions = agent_path.join("sessions").exists();
-                let has_workspace = agent_path.join("workspace").exists();
+                let has_sessions = is_directory(&agent_path.join("sessions"));
+                let has_workspace = is_directory(&agent_path.join("workspace"));
 
                 if has_memory {
                     result.has_memory = true;
@@ -4593,6 +4593,22 @@ mod tests {
     }
 
     #[test]
+    fn test_scan_workspace_ignores_directory_shaped_agent_markers() {
+        let source = TempDir::new().unwrap();
+        create_legacy_yaml_workspace(source.path());
+
+        let agent_dir = source.path().join("agents").join("coder");
+        std::fs::remove_file(agent_dir.join("agent.yaml")).unwrap();
+        std::fs::create_dir(agent_dir.join("agent.yaml")).unwrap();
+        std::fs::write(agent_dir.join("sessions"), "not a directory").unwrap();
+        std::fs::write(agent_dir.join("workspace"), "not a directory").unwrap();
+
+        let result = scan_openclaw_workspace(source.path());
+        assert!(result.has_config);
+        assert!(result.agents.is_empty(), "directory-shaped agent.yaml should be ignored");
+    }
+
+    #[test]
     fn test_scan_json5_workspace() {
         let source = TempDir::new().unwrap();
         create_json5_workspace(source.path());
@@ -4622,6 +4638,31 @@ mod tests {
         assert!(result.channels.contains(&"imessage".to_string()));
         assert!(result.channels.contains(&"bluebubbles".to_string()));
         assert!(result.has_memory);
+    }
+
+    #[test]
+    fn test_scan_json5_workspace_ignores_file_shaped_session_and_workspace_markers() {
+        let source = TempDir::new().unwrap();
+        create_json5_workspace(source.path());
+
+        std::fs::remove_dir_all(source.path().join("sessions")).unwrap();
+        std::fs::write(source.path().join("sessions"), "not a directory").unwrap();
+
+        let coder_workspace = source.path().join("workspaces").join("coder");
+        std::fs::remove_dir_all(&coder_workspace).unwrap();
+        std::fs::write(&coder_workspace, "not a directory").unwrap();
+
+        let result = scan_openclaw_workspace(source.path());
+        let coder = result
+            .agents
+            .iter()
+            .find(|agent| agent.name == "Coder")
+            .expect("coder agent should still be scanned");
+        assert!(!coder.has_sessions, "file-shaped sessions marker should be ignored");
+        assert!(
+            !coder.has_workspace,
+            "file-shaped workspaces/coder marker should be ignored"
+        );
     }
 
     #[test]
