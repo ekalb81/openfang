@@ -50,6 +50,17 @@ pub async fn execute_skill_tool(
     }
 }
 
+fn ensure_skill_entry_is_file(script_path: &Path, runtime_name: &str) -> Result<(), SkillError> {
+    if !script_path.is_file() {
+        return Err(SkillError::ExecutionFailed(format!(
+            "{runtime_name} script not found: {}",
+            script_path.display()
+        )));
+    }
+
+    Ok(())
+}
+
 /// Execute a Python skill script.
 async fn execute_python(
     skill_dir: &Path,
@@ -58,12 +69,7 @@ async fn execute_python(
     input: &serde_json::Value,
 ) -> Result<SkillToolResult, SkillError> {
     let script_path = skill_dir.join(entry);
-    if !script_path.exists() {
-        return Err(SkillError::ExecutionFailed(format!(
-            "Python script not found: {}",
-            script_path.display()
-        )));
-    }
+    ensure_skill_entry_is_file(&script_path, "Python")?;
 
     // Build the JSON payload to send via stdin
     let payload = serde_json::json!({
@@ -164,12 +170,7 @@ async fn execute_node(
     input: &serde_json::Value,
 ) -> Result<SkillToolResult, SkillError> {
     let script_path = skill_dir.join(entry);
-    if !script_path.exists() {
-        return Err(SkillError::ExecutionFailed(format!(
-            "Node.js script not found: {}",
-            script_path.display()
-        )));
-    }
+    ensure_skill_entry_is_file(&script_path, "Node.js")?;
 
     let node = find_node().ok_or_else(|| {
         SkillError::RuntimeNotAvailable(
@@ -310,12 +311,7 @@ async fn execute_shell(
     input: &serde_json::Value,
 ) -> Result<SkillToolResult, SkillError> {
     let script_path = skill_dir.join(entry);
-    if !script_path.exists() {
-        return Err(SkillError::ExecutionFailed(format!(
-            "Shell script not found: {}",
-            script_path.display()
-        )));
-    }
+    ensure_skill_entry_is_file(&script_path, "Shell")?;
 
     // Build the JSON payload to send via stdin
     let payload = serde_json::json!({
@@ -405,6 +401,7 @@ async fn execute_shell(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_find_python() {
@@ -417,13 +414,40 @@ mod tests {
         let _ = find_node();
     }
 
+    #[test]
+    fn ensure_skill_entry_is_file_accepts_real_file() {
+        let dir = TempDir::new().unwrap();
+        let script_path = dir.path().join("skill.py");
+        std::fs::write(&script_path, "print('ok')\n").unwrap();
+
+        let result = ensure_skill_entry_is_file(&script_path, "Python");
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ensure_skill_entry_is_file_rejects_directory_marker() {
+        let dir = TempDir::new().unwrap();
+        let script_path = dir.path().join("skill.py");
+        std::fs::create_dir(&script_path).unwrap();
+
+        let err = ensure_skill_entry_is_file(&script_path, "Python").unwrap_err();
+
+        match err {
+            SkillError::ExecutionFailed(message) => {
+                assert!(message.contains("Python script not found"));
+                assert!(message.contains("skill.py"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
     #[tokio::test]
     async fn test_prompt_only_execution() {
         use crate::{
             SkillManifest, SkillMeta, SkillRequirements, SkillRuntimeConfig, SkillToolDef,
             SkillTools,
         };
-        use tempfile::TempDir;
 
         let dir = TempDir::new().unwrap();
         let manifest = SkillManifest {
