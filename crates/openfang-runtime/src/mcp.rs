@@ -432,7 +432,7 @@ impl McpConnection {
                 let has_cmd = std::env::var("PATH")
                     .unwrap_or_default()
                     .split(';')
-                    .any(|dir| std::path::Path::new(dir).join(&cmd_variant).exists());
+                    .any(|dir| path_points_to_file(std::path::Path::new(dir).join(&cmd_variant)));
                 if has_cmd {
                     cmd_variant
                 } else {
@@ -540,6 +540,10 @@ impl Drop for McpConnection {
     }
 }
 
+fn path_points_to_file(path: impl AsRef<std::path::Path>) -> bool {
+    std::fs::metadata(path).map(|metadata| metadata.is_file()).unwrap_or(false)
+}
+
 // ---------------------------------------------------------------------------
 // Tool namespacing helpers
 // ---------------------------------------------------------------------------
@@ -605,6 +609,20 @@ pub fn normalize_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_path_points_to_file_accepts_files_only() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("server.cmd");
+        std::fs::write(&file_path, "@echo off\n").unwrap();
+        let dir_path = dir.path().join("server.cmd.dir");
+        std::fs::create_dir(&dir_path).unwrap();
+
+        assert!(path_points_to_file(&file_path));
+        assert!(!path_points_to_file(&dir_path));
+        assert!(!path_points_to_file(dir.path().join("missing.cmd")));
+    }
 
     #[test]
     fn test_mcp_tool_namespacing() {

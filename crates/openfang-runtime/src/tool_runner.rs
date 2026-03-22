@@ -87,6 +87,10 @@ pub fn current_agent_depth() -> u32 {
     AGENT_CALL_DEPTH.try_with(|d| d.get()).unwrap_or(0)
 }
 
+fn path_points_to_file(path: impl AsRef<std::path::Path>) -> bool {
+    std::fs::metadata(path).map(|metadata| metadata.is_file()).unwrap_or(false)
+}
+
 /// Execute a tool by name with the given input, returning a ToolResult.
 ///
 /// The optional `kernel` handle enables inter-agent tools. If `None`,
@@ -1496,10 +1500,7 @@ async fn tool_shell_exec(
                 "C:\\Program Files\\Git\\usr\\bin\\sh.exe",
                 "C:\\Program Files (x86)\\Git\\usr\\bin\\sh.exe",
             ];
-            SH_PATHS
-                .iter()
-                .copied()
-                .find(|p| std::path::Path::new(p).exists())
+            SH_PATHS.iter().copied().find(path_points_to_file)
         };
         let (shell, shell_arg) = if cfg!(windows) {
             #[cfg(windows)]
@@ -3263,6 +3264,19 @@ async fn tool_canvas_present(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_path_points_to_file_accepts_files_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("sh.exe");
+        std::fs::write(&file_path, "binary").unwrap();
+        let dir_path = dir.path().join("sh.exe.dir");
+        std::fs::create_dir(&dir_path).unwrap();
+
+        assert!(path_points_to_file(&file_path));
+        assert!(!path_points_to_file(&dir_path));
+        assert!(!path_points_to_file(dir.path().join("missing.exe")));
+    }
 
     #[test]
     fn test_builtin_tool_definitions() {
