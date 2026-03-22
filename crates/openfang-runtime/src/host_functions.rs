@@ -129,15 +129,25 @@ fn is_ssrf_target(url: &str) -> Result<(), serde_json::Value> {
     }
 
     let host = extract_host_from_url(url);
-    let hostname = host.split(':').next().unwrap_or(&host);
+    let hostname = if host.starts_with('[') {
+        host.find(']').map(|i| &host[..=i]).unwrap_or(&host)
+    } else {
+        host.split(':').next().unwrap_or(&host)
+    };
 
     // Check hostname-based blocklist first (catches metadata endpoints)
     let blocked_hostnames = [
         "localhost",
+        "ip6-localhost",
         "metadata.google.internal",
         "metadata.aws.internal",
         "instance-data",
         "169.254.169.254",
+        "100.100.100.200",
+        "192.0.0.192",
+        "0.0.0.0",
+        "::1",
+        "[::1]",
     ];
     if blocked_hostnames.contains(&hostname) {
         return Err(json!({"error": format!("SSRF blocked: {hostname} is a restricted hostname")}));
@@ -624,6 +634,9 @@ mod tests {
         assert!(is_ssrf_target("http://localhost:3000/api").is_err());
         assert!(is_ssrf_target("http://169.254.169.254/metadata").is_err());
         assert!(is_ssrf_target("http://metadata.google.internal/v1/instance").is_err());
+        assert!(is_ssrf_target("http://[::1]:8080/secret").is_err());
+        assert!(is_ssrf_target("http://ip6-localhost/api").is_err());
+        assert!(is_ssrf_target("http://0.0.0.0/admin").is_err());
     }
 
     #[test]
@@ -663,6 +676,10 @@ mod tests {
         assert_eq!(
             extract_host_from_url("http://example.com"),
             "example.com:80"
+        );
+        assert_eq!(
+            extract_host_from_url("http://[::1]:8080/api"),
+            "[::1]:8080"
         );
     }
 }
