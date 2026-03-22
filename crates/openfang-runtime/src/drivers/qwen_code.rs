@@ -421,13 +421,16 @@ pub fn qwen_code_available() -> bool {
 /// Check if Qwen credentials exist.
 fn qwen_credentials_exist() -> bool {
     if let Some(home) = home_dir() {
-        let qwen_dir = home.join(".qwen");
-        qwen_dir.join("credentials.json").exists()
-            || qwen_dir.join(".credentials.json").exists()
-            || qwen_dir.join("auth.json").exists()
+        qwen_credentials_exist_in_dir(&home.join(".qwen"))
     } else {
         false
     }
+}
+
+fn qwen_credentials_exist_in_dir(qwen_dir: &std::path::Path) -> bool {
+    qwen_dir.join("credentials.json").is_file()
+        || qwen_dir.join(".credentials.json").is_file()
+        || qwen_dir.join("auth.json").is_file()
 }
 
 /// Cross-platform home directory.
@@ -585,5 +588,30 @@ mod tests {
         assert_eq!(event.r#type, "result");
         assert_eq!(event.result.unwrap(), "Final answer");
         assert_eq!(event.usage.unwrap().output_tokens, 10);
+    }
+
+    #[test]
+    fn test_qwen_credentials_exist_in_dir_ignores_directories() {
+        let dir = std::env::temp_dir().join("openfang_qwen_credentials_dir_marker_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("credentials.json")).unwrap();
+        std::fs::create_dir_all(dir.join(".credentials.json")).unwrap();
+        std::fs::create_dir_all(dir.join("auth.json")).unwrap();
+
+        assert!(!qwen_credentials_exist_in_dir(&dir));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_qwen_credentials_exist_in_dir_accepts_real_file() {
+        let dir = std::env::temp_dir().join("openfang_qwen_credentials_file_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("auth.json"), "{}\n").unwrap();
+
+        assert!(qwen_credentials_exist_in_dir(&dir));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -601,12 +601,15 @@ pub fn claude_code_available() -> bool {
 /// - `~/.claude/credentials.json` (newer versions)
 fn claude_credentials_exist() -> bool {
     if let Some(home) = home_dir() {
-        let claude_dir = home.join(".claude");
-        claude_dir.join(".credentials.json").exists()
-            || claude_dir.join("credentials.json").exists()
+        claude_credentials_exist_in_dir(&home.join(".claude"))
     } else {
         false
     }
+}
+
+fn claude_credentials_exist_in_dir(claude_dir: &std::path::Path) -> bool {
+    claude_dir.join(".credentials.json").is_file()
+        || claude_dir.join("credentials.json").is_file()
 }
 
 /// Cross-platform home directory.
@@ -715,5 +718,29 @@ mod tests {
         assert!(SENSITIVE_ENV_EXACT.contains(&"GEMINI_API_KEY"));
         assert!(SENSITIVE_ENV_EXACT.contains(&"GROQ_API_KEY"));
         assert!(SENSITIVE_ENV_EXACT.contains(&"DEEPSEEK_API_KEY"));
+    }
+
+    #[test]
+    fn test_claude_credentials_exist_in_dir_ignores_directories() {
+        let dir = std::env::temp_dir().join("openfang_claude_credentials_dir_marker_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".credentials.json")).unwrap();
+        std::fs::create_dir_all(dir.join("credentials.json")).unwrap();
+
+        assert!(!claude_credentials_exist_in_dir(&dir));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_claude_credentials_exist_in_dir_accepts_real_file() {
+        let dir = std::env::temp_dir().join("openfang_claude_credentials_file_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("credentials.json"), "{}\n").unwrap();
+
+        assert!(claude_credentials_exist_in_dir(&dir));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
