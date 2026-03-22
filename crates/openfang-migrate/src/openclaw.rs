@@ -1308,7 +1308,7 @@ pub fn migrate(options: &MigrateOptions) -> Result<MigrationReport, MigrateError
     let source = &options.source_dir;
     let target = &options.target_dir;
 
-    if !source.exists() {
+    if !is_directory(source) {
         return Err(MigrateError::SourceNotFound(source.clone()));
     }
 
@@ -4179,6 +4179,27 @@ mod tests {
 
         // No agents should be an info, not crash
         assert!(report.warnings.iter().any(|w| w.contains("No agents")));
+    }
+
+    #[test]
+    fn test_migrate_rejects_file_shaped_source_root() {
+        let temp = TempDir::new().unwrap();
+        let source_file = temp.path().join("not-a-workspace");
+        let target = TempDir::new().unwrap();
+        std::fs::write(&source_file, "oops").unwrap();
+
+        let options = MigrateOptions {
+            source: crate::MigrateSource::OpenClaw,
+            source_dir: source_file.clone(),
+            target_dir: target.path().to_path_buf(),
+            dry_run: false,
+        };
+
+        let err = migrate(&options).unwrap_err();
+        match err {
+            MigrateError::SourceNotFound(path) => assert_eq!(path, source_file),
+            other => panic!("expected SourceNotFound, got {other:?}"),
+        }
     }
 
     #[test]
