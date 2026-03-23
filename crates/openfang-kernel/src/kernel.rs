@@ -4025,7 +4025,7 @@ impl OpenFangKernel {
                 .workflows_dir
                 .clone()
                 .unwrap_or_else(|| self.config.home_dir.join("workflows"));
-            if wf_dir.exists() {
+            if wf_dir.is_dir() {
                 let kernel = Arc::clone(self);
                 tokio::spawn(async move {
                     let count = kernel.load_workflows_from_dir(&wf_dir).await;
@@ -4033,6 +4033,8 @@ impl OpenFangKernel {
                         info!("Auto-loaded {count} workflow(s) from {}", wf_dir.display());
                     }
                 });
+            } else if wf_dir.exists() {
+                tracing::warn!(path = ?wf_dir, "Skipping workflow autoload because configured workflows path is not a directory");
             }
         }
 
