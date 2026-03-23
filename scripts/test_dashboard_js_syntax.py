@@ -7,6 +7,7 @@ import re
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = REPO_ROOT / "crates/openfang-api/static"
 STATIC_JS_DIR = STATIC_DIR / "js"
+NODE_CHECK_TIMEOUT_SECONDS = 15
 INLINE_SCRIPT_RE = re.compile(r"<script\b[^>]*>(.*?)</script>", re.IGNORECASE | re.DOTALL)
 
 
@@ -41,18 +42,59 @@ def inline_script_blocks(path: Path) -> list[tuple[int, str]]:
 
 
 def node_check(path: Path) -> str | None:
-    result = subprocess.run(
-        ["node", "--check", str(path)],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["node", "--check", str(path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=NODE_CHECK_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        output = "\n".join(
+            part.strip()
+            for part in (
+                (exc.stdout or "") if isinstance(exc.stdout, str) else "",
+                (exc.stderr or "") if isinstance(exc.stderr, str) else "",
+            )
+            if part and part.strip()
+        )
+        return (
+            f"node --check timed out after {NODE_CHECK_TIMEOUT_SECONDS}s"
+            + (f"\n{output}" if output else "")
+        )
+
     if result.returncode == 0:
         return None
     return (result.stderr or result.stdout).strip()
 
 
 class DashboardJavaScriptSyntaxTests(unittest.TestCase):
+    def test_node_check_reports_timeouts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "hang.js"
+            path.write_text("const answer = 42;\n", encoding="utf-8")
+
+            original_run = subprocess.run
+            original_timeout = NODE_CHECK_TIMEOUT_SECONDS
+
+            def fake_run(*args, **kwargs):
+                raise subprocess.TimeoutExpired(
+                    cmd=args[0],
+                    timeout=kwargs.get("timeout", 0.01),
+                )
+
+            try:
+                subprocess.run = fake_run
+                globals()["NODE_CHECK_TIMEOUT_SECONDS"] = 0.01
+                output = node_check(path)
+            finally:
+                subprocess.run = original_run
+                globals()["NODE_CHECK_TIMEOUT_SECONDS"] = original_timeout
+
+        self.assertIsNotNone(output)
+        self.assertIn("node --check timed out after 0.01s", output)
+
     def test_first_party_dashboard_javascript_files_parse_with_node(self):
         files = first_party_javascript_files()
         self.assertGreater(len(files), 0, "expected first-party JavaScript assets to exist")

@@ -6,6 +6,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = REPO_ROOT / "scripts"
+SCRIPT_TIMEOUT_SECONDS = 15
 
 
 def discover_python_check_scripts(root: Path) -> list[Path]:
@@ -14,6 +15,36 @@ def discover_python_check_scripts(root: Path) -> list[Path]:
         for path in root.rglob("check_*.py")
         if path.is_file()
     )
+
+
+def run_python_check_script(
+    path: Path,
+    timeout_seconds: float = SCRIPT_TIMEOUT_SECONDS,
+) -> tuple[int, str]:
+    try:
+        result = subprocess.run(
+            ["python3", str(path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        output = "\n".join(
+            part.strip()
+            for part in (
+                (exc.stdout or "") if isinstance(exc.stdout, str) else "",
+                (exc.stderr or "") if isinstance(exc.stderr, str) else "",
+            )
+            if part and part.strip()
+        )
+        message = f"timed out after {timeout_seconds}s" + (f"\n{output}" if output else "")
+        return (124, message)
+
+    output = "\n".join(
+        part for part in (result.stdout.strip(), result.stderr.strip()) if part
+    )
+    return (result.returncode, output)
 
 
 class PythonCheckSuiteTests(unittest.TestCase):
@@ -37,6 +68,16 @@ class PythonCheckSuiteTests(unittest.TestCase):
                 [top_level, nested, deeper],
             )
 
+    def test_run_python_check_script_reports_timeouts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "check_hang.py"
+            path.write_text("import time\ntime.sleep(60)\n", encoding="utf-8")
+
+            returncode, output = run_python_check_script(path, timeout_seconds=0.01)
+
+        self.assertEqual(returncode, 124)
+        self.assertIn("timed out after 0.01s", output)
+
     def test_all_python_check_scripts_pass(self) -> None:
         check_files = discover_python_check_scripts(SCRIPTS_DIR)
         self.assertGreater(
@@ -47,18 +88,10 @@ class PythonCheckSuiteTests(unittest.TestCase):
 
         failures: list[str] = []
         for path in check_files:
-            result = subprocess.run(
-                ["python3", str(path)],
-                cwd=REPO_ROOT,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                output = "\n".join(
-                    part for part in (result.stdout.strip(), result.stderr.strip()) if part
-                )
+            returncode, output = run_python_check_script(path)
+            if returncode != 0:
                 failures.append(
-                    f"{path.relative_to(REPO_ROOT)} exited with {result.returncode}"
+                    f"{path.relative_to(REPO_ROOT)} exited with {returncode}"
                     + (f"\n{output}" if output else "")
                 )
 
