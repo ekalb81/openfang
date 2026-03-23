@@ -207,7 +207,7 @@
 
     <!-- Page: Overview -->
     <template x-if="page === 'overview'">
-      <div x-data="overviewPage" x-init="loadOverview().then(() => startAutoRefresh())" @page-leave.window="stopAutoRefresh()">
+      <div x-data="overviewPage()" x-init="loadOverview().then(() => startAutoRefresh())" @page-leave.window="stopAutoRefresh()">
         <div class="page-header">
           <h2>Overview</h2>
           <div class="flex items-center gap-2">
@@ -541,11 +541,11 @@
 
     <!-- Page: Agents -->
     <template x-if="page === 'agents'">
-      <div x-data="agentsPage" @close-chat.window="closeChat()">
+      <div x-data="agentsPage()" @close-chat.window="closeChat()">
 
         <!-- MODE 1: Inline Chat (agent selected) -->
         <template x-if="activeChatAgent">
-          <div x-data="chatPage" class="chat-wrapper">
+          <div x-data="chatPage()" class="chat-wrapper">
             <!-- Chat header with back button -->
             <div class="page-header" x-show="currentAgent">
               <div class="flex items-center gap-2" style="min-width:0">
@@ -1342,7 +1342,7 @@
 
         <!-- Tab: List -->
         <template x-if="wfTab === 'list'">
-        <div x-data="workflowsPage">
+        <div x-data="workflowsPage()">
         <div class="page-body" x-init="loadWorkflows()">
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading workflows...</span></div>
           <div x-show="!loading && loadError" class="error-state">
@@ -2187,7 +2187,7 @@
 
     <!-- Page: Skills -->
     <template x-if="page === 'skills'">
-      <div x-data="skillsPage">
+      <div x-data="skillsPage()">
         <div class="page-header"><h2>Skills</h2></div>
         <div class="page-body" x-init="loadSkills()">
           <div class="info-card">
@@ -2514,7 +2514,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Hands -->
     <template x-if="page === 'hands'">
-      <div x-data="handsPage">
+      <div x-data="handsPage()">
         <div class="page-header"><h2>Hands</h2></div>
         <div class="page-body" x-init="loadData()">
           <div class="info-card">
@@ -3954,7 +3954,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Analytics -->
     <template x-if="page === 'analytics'">
-      <div x-data="analyticsPage">
+      <div x-data="analyticsPage()">
         <div class="page-header"><h2>Analytics</h2></div>
         <div class="page-body" x-init="loadUsage()">
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading usage data...</span></div>
@@ -4191,7 +4191,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Sessions -->
     <template x-if="page === 'sessions'">
-      <div x-data="sessionsPage">
+      <div x-data="sessionsPage()">
         <div class="page-header">
           <h2>Sessions</h2>
           <input class="form-input" style="width:200px" placeholder="Filter by agent..." x-model="searchFilter" x-show="tab === 'sessions'">
@@ -4331,7 +4331,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Logs -->
     <template x-if="page === 'logs'">
-      <div x-data="logsPage" @page-leave.window="destroy()">
+      <div x-data="logsPage()" @page-leave.window="destroy()">
         <div class="page-header">
           <h2>Logs</h2>
           <div class="flex gap-2 items-center" x-show="tab === 'live'">
@@ -4449,7 +4449,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Comms -->
     <template x-if="page === 'comms'">
-      <div x-data="commsPage" x-init="loadData()" @page-leave.window="stopSSE()">
+      <div x-data="commsPage()" x-init="loadData()" @page-leave.window="stopSSE()">
         <div class="page-header">
           <h2>Agent Comms</h2>
           <div class="flex items-center gap-2">
@@ -4619,7 +4619,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Setup Wizard -->
     <template x-if="page === 'wizard'">
-      <div x-data="wizardPage">
+      <div x-data="wizardPage()">
         <div class="page-header">
           <h2>Setup Wizard</h2>
           <button class="btn btn-ghost btn-sm" @click="finishAndDismiss()">Skip Setup</button>
