@@ -43,6 +43,7 @@ STRING_LITERAL_RE = re.compile(r"('(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\")")
 IGNORED_CALLEES = {"if", "Number", "String", "Boolean", "Object", "Array", "Date", "Math", "JSON", "parseInt", "parseFloat", "encodeURIComponent", "decodeURIComponent"}
 ROUTE_TEMPLATE_RE = re.compile(r'<template\b[^>]*x-if\s*=\s*"page === \'([^\']+)\'"')
 ROUTE_EXPR_RE = re.compile(r'(?:x-(?:show|if|text)|(?:x-bind:|:)[A-Za-z0-9_.:-]+)\s*=\s*"([^"]+)"')
+XHTML_RE = re.compile(r'x-html\s*=\s*"([^"]+)"')
 XMODEL_RE = re.compile(r'x-model\s*=\s*"([^"]+)"')
 XFOR_RE = re.compile(r'x-for\s*=\s*"([^"]+)"')
 STATE_LIKE_IDENTIFIER_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*(?:Loading|Error))\b')
@@ -50,6 +51,7 @@ SIMPLE_MEMBER_EXPR_RE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\b(?:\s*(?:[.[(
 HTML_TAG_RE = re.compile(r'<(/?)([A-Za-z0-9:-]+)\b[^>]*?>')
 TAG_RE = re.compile(r'<[^>]+>')
 VOID_HTML_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
+GLOBAL_TEMPLATE_HELPERS = {"escapeHtml", "renderMarkdown", "toolIcon"}
 
 
 def page_leave_hook_re(hook_name: str) -> re.Pattern[str]:
@@ -69,7 +71,11 @@ def direct_method_calls(expr: str) -> list[str]:
 
 
 def undefined_method_calls(expr: str, defined_methods: set[str]) -> list[str]:
-    return [method for method in direct_method_calls(expr) if method not in defined_methods]
+    return [
+        method
+        for method in direct_method_calls(expr)
+        if method not in defined_methods and method not in GLOBAL_TEMPLATE_HELPERS
+    ]
 
 
 def defined_members_in(js: str) -> set[str]:
@@ -220,6 +226,12 @@ def main() -> int:
                 for method_name in undefined_method_calls(event_match.group(1), defined_methods):
                     errors.append(
                         f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route event handler references {method_name}() but {component_name} does not define it"
+                    )
+
+            for xhtml_match in XHTML_RE.finditer(line):
+                for method_name in undefined_method_calls(xhtml_match.group(1), defined_methods):
+                    errors.append(
+                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-html references {method_name}() but {component_name} does not define it"
                     )
 
             for expr_match in ROUTE_EXPR_RE.finditer(line):

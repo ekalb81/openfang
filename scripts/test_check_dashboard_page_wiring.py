@@ -48,6 +48,10 @@ class DashboardPageWiringTests(unittest.TestCase):
         expr = "style = 'transform: translateY(var(--drag-offset))'; resize(Number($event.target.value)); save()"
         self.assertEqual(module.direct_method_calls(expr), ['resize', 'save'])
 
+    def test_undefined_method_calls_ignore_known_global_template_helpers(self):
+        expr = 'renderMarkdown(msg.text); toolIcon(tool.name); actionIcon(event.action); escapeHtml(raw)'
+        self.assertEqual(module.undefined_method_calls(expr, {'actionIcon'}), [])
+
     def test_undefined_method_calls_ignores_property_calls_and_reports_missing_methods(self):
         expr = 'loadOverview().then(() => startAutoRefresh()); missingMethod()'
         self.assertEqual(
@@ -152,14 +156,16 @@ class DashboardPageWiringTests(unittest.TestCase):
         self.assertEqual(module.model_member_root('configForm.name'), 'configForm')
         self.assertEqual(module.model_member_root('spawnForm.caps.memory_read'), 'spawnForm')
 
-    def test_xmodel_and_xfor_regexes_capture_route_bindings(self):
+    def test_xmodel_xfor_and_xhtml_regexes_capture_route_bindings(self):
         line = (
             '<input x-model="formValues[field.key]">'
             '<template x-for="session in filteredSessions">'
+            '<div x-html="highlightSearch(renderMarkdown(msg.text))"></div>'
             '<button @click="refreshRuntime()">Refresh</button>'
         )
         self.assertEqual(module.XMODEL_RE.findall(line), ['formValues[field.key]'])
         self.assertEqual(module.XFOR_RE.findall(line), ['session in filteredSessions'])
+        self.assertEqual(module.XHTML_RE.findall(line), ['highlightSearch(renderMarkdown(msg.text))'])
 
     def test_page_leave_hook_regex_matches_expected_hook(self):
         hook_re = module.page_leave_hook_re('destroy')
@@ -237,6 +243,52 @@ class DashboardPageWiringTests(unittest.TestCase):
                     <div @keydown.escape.window="closeModal()"></div>
                     <div x-data="childWidget()">
                       <button @click="missingChildMethod()">Child action</button>
+                    </div>
+                  </section>
+                </template>
+                """,
+                encoding='utf-8',
+            )
+
+            old_repo_root = module.REPO_ROOT
+            old_pages_dir = module.PAGES_DIR
+            old_index_body = module.INDEX_BODY
+            try:
+                module.REPO_ROOT = root
+                module.PAGES_DIR = pages_dir
+                module.INDEX_BODY = root / 'crates/openfang-api/static/index_body.html'
+                self.assertEqual(module.main(), 1)
+            finally:
+                module.REPO_ROOT = old_repo_root
+                module.PAGES_DIR = old_pages_dir
+                module.INDEX_BODY = old_index_body
+
+    def test_main_flags_route_scoped_xhtml_method_typos_but_allows_global_helpers(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pages_dir = root / 'crates/openfang-api/static/js/pages'
+            pages_dir.mkdir(parents=True)
+            (pages_dir / 'chat.js').write_text(
+                """
+                function chatPage() {
+                    return {
+                        loading: false,
+                        loadError: '',
+                        highlightSearch() {},
+                    };
+                }
+                """,
+                encoding='utf-8',
+            )
+            (root / 'crates/openfang-api/static/index_body.html').write_text(
+                """
+                <template x-if="page === 'chat'">
+                  <section x-data="chatPage()">
+                    <div x-html="highlightSerch(renderMarkdown(msg.text))"></div>
+                    <div x-html="toolIcon(tool.name)"></div>
+                    <div x-data="childWidget()">
+                      <div x-html="missingChildMethod()"></div>
                     </div>
                   </section>
                 </template>
