@@ -215,7 +215,11 @@ function logsPage() {
 
     auditAgentName: function(agentId) {
       if (!agentId) return '-';
-      var agents = Alpine.store('app').agents || [];
+      var agents = [];
+      try {
+        var appStore = Alpine.store('app');
+        agents = (appStore && appStore.agents) || [];
+      } catch (_error) {}
       var agent = agents.find(function(a) { return a.id === agentId; });
       return agent ? agent.name : agentId.substring(0, 8) + '...';
     },
