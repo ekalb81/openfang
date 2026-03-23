@@ -183,6 +183,7 @@ document.addEventListener('alpine:init', function() {
         this.agentCount = s.agent_count || 0;
       } catch(e) {
         this.connected = false;
+        this.booting = false;
         this.lastError = e.message || 'Unknown error';
         console.warn('[OpenFang] Status check failed:', e.message);
       }
