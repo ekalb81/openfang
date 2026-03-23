@@ -34,8 +34,9 @@ METHOD_DEF_RE = re.compile(
     re.MULTILINE,
 )
 METHOD_CALL_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*)\s*\(')
-BUTTON_CLICK_RE = re.compile(r'<button\b[^>]*@click\s*=\s*"([^"]+)"[^>]*>([^<]*)</button>')
+BUTTON_CLICK_RE = re.compile(r'<button\b[^>]*@click\s*=\s*"([^"]+)"[^>]*>(.*?)</button>', re.DOTALL)
 ROUTE_TEMPLATE_RE = re.compile(r'<template\b[^>]*x-if\s*=\s*"page === \'([^\']+)\'"')
+TAG_RE = re.compile(r'<[^>]+>')
 
 
 def page_leave_hook_re(hook_name: str) -> re.Pattern[str]:
@@ -74,6 +75,16 @@ def collect_route_lines(index_lines: list[str]) -> dict[str, list[tuple[int, str
             template_depth = 0
 
     return route_lines
+
+
+def normalize_button_label(label_html: str) -> str:
+    label_text = TAG_RE.sub(" ", label_html)
+    return " ".join(label_text.split())
+
+
+def is_retry_or_refresh_label(label_html: str) -> bool:
+    normalized = normalize_button_label(label_html)
+    return normalized.startswith("Retry") or normalized.startswith("Refresh")
 
 
 def main() -> int:
@@ -124,16 +135,20 @@ def main() -> int:
                     )
 
         route_name = page_file.stem
-        for line_number, line in route_lines.get(route_name, []):
-            for expr, label in BUTTON_CLICK_RE.findall(line):
-                if label.strip() not in {"Retry", "Refresh"}:
-                    continue
+        route_html = "\n".join(line for _, line in route_lines.get(route_name, []))
+        route_base_line = route_lines.get(route_name, [(1, "")])[0][0]
+        for match in BUTTON_CLICK_RE.finditer(route_html):
+            expr, label_html = match.groups()
+            if not is_retry_or_refresh_label(label_html):
+                continue
 
-                for method_name in direct_method_calls(expr):
-                    if method_name not in defined_methods:
-                        errors.append(
-                            f"{page_file.relative_to(REPO_ROOT)}:{line_number}: {label.strip()} button references {method_name}() but {component_name} does not define it"
-                        )
+            label = normalize_button_label(label_html)
+            line_number = route_base_line + route_html[: match.start()].count("\n")
+            for method_name in direct_method_calls(expr):
+                if method_name not in defined_methods:
+                    errors.append(
+                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: {label} button references {method_name}() but {component_name} does not define it"
+                    )
 
         for hook_name, hook_re in ROUTE_LEAVE_HOOKS.items():
             if hook_re.search(js):
