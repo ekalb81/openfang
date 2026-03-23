@@ -5,9 +5,10 @@ This catches four lightweight but high-churn regression families:
 1. Route page components from static/js/pages/*.js (plain factories or Alpine.data registrations)
    must be mounted by a matching x-data binding in static/index_body.html.
 2. Route-root x-init handlers must only call methods that the page component actually defines.
-3. Pages that expose route-leave cleanup hooks must wire the matching
-   @page-leave.window="...()" handler on their route root.
-4. Route-scoped Retry/Refresh buttons must only call methods that the page component actually defines.
+3. Route-scoped state bindings (x-show/x-if/x-text/:disabled/etc.) must only reference
+   Loading/Error members that the page component actually defines.
+4. Pages that expose route-leave cleanup hooks and route-scoped Retry/Refresh buttons
+   must wire only methods that the page component actually defines.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ STATE_DEF_RE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?!\s*(?:async\s+
 METHOD_CALL_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*)\s*\(')
 BUTTON_CLICK_RE = re.compile(r'<button\b[^>]*@click\s*=\s*"([^"]+)"[^>]*>(.*?)</button>', re.DOTALL)
 ROUTE_TEMPLATE_RE = re.compile(r'<template\b[^>]*x-if\s*=\s*"page === \'([^\']+)\'"')
-ROUTE_EXPR_RE = re.compile(r'x-(?:show|if)\s*=\s*"([^"]+)"')
+ROUTE_EXPR_RE = re.compile(r'(?:x-(?:show|if|text)|(?:x-bind:|:)[A-Za-z0-9_.:-]+)\s*=\s*"([^"]+)"')
 STATE_LIKE_IDENTIFIER_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*(?:Loading|Error))\b')
 HTML_TAG_RE = re.compile(r'<(/?)([A-Za-z0-9:-]+)\b[^>]*?>')
 TAG_RE = re.compile(r'<[^>]+>')

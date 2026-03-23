@@ -74,6 +74,26 @@ class DashboardPageWiringTests(unittest.TestCase):
             set(),
         )
 
+    def test_route_expr_re_matches_text_and_bound_attributes(self):
+        line = (
+            '<button :disabled="settingsLoading || saveError" '
+            'x-text="settingsLoading ? \'Saving...\' : \'Save\'" '
+            'x-show="!loadError"></button>'
+        )
+
+        self.assertEqual(
+            module.ROUTE_EXPR_RE.findall(line),
+            [
+                'settingsLoading || saveError',
+                "settingsLoading ? 'Saving...' : 'Save'",
+                '!loadError',
+            ],
+        )
+
+    def test_route_expr_re_ignores_event_handlers(self):
+        line = '<button @click="refreshRuntime()" :disabled="runtimeLoading">Refresh</button>'
+        self.assertEqual(module.ROUTE_EXPR_RE.findall(line), ['runtimeLoading'])
+
     def test_collect_route_lines_groups_nested_template_body(self):
         index_lines = [
             '<template x-if="page === \'runtime\'">',
