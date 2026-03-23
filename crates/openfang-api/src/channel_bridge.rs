@@ -1806,7 +1806,7 @@ fn unescape_quoted_value(value: &str, quote: char) -> String {
 fn reload_env_file_for_channel_hot_reload(
     path: &std::path::Path,
 ) -> Result<HashMap<String, String>, std::io::Error> {
-    if !path.exists() {
+    if !path.is_file() {
         return Ok(HashMap::new());
     }
 
@@ -2066,6 +2066,21 @@ mod tests {
 
         std::env::remove_var(valid_secret);
         std::env::remove_var(valid_dotenv);
+    }
+
+    #[test]
+    fn reload_channel_env_from_disk_ignores_directory_placeholders() {
+        let dir = tempfile::tempdir().unwrap();
+        let inherited_key = "OPENFANG_TEST_CHANNEL_RELOAD_DIRECTORY_PLACEHOLDER";
+
+        std::env::set_var(inherited_key, "from_parent_env");
+        std::fs::create_dir_all(dir.path().join("secrets.env")).unwrap();
+        std::fs::create_dir_all(dir.path().join(".env")).unwrap();
+
+        reload_channel_env_from_disk(dir.path());
+
+        assert_eq!(std::env::var(inherited_key).unwrap(), "from_parent_env");
+        std::env::remove_var(inherited_key);
     }
 
     #[tokio::test]
