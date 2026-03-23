@@ -33,10 +33,15 @@ METHOD_DEF_RE = re.compile(
     r'^\s*(?:async\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(|^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?:async\s+)?function\s*\(',
     re.MULTILINE,
 )
+STATE_DEF_RE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?!\s*(?:async\s+)?function\b)', re.MULTILINE)
 METHOD_CALL_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*)\s*\(')
 BUTTON_CLICK_RE = re.compile(r'<button\b[^>]*@click\s*=\s*"([^"]+)"[^>]*>(.*?)</button>', re.DOTALL)
 ROUTE_TEMPLATE_RE = re.compile(r'<template\b[^>]*x-if\s*=\s*"page === \'([^\']+)\'"')
+ROUTE_EXPR_RE = re.compile(r'x-(?:show|if)\s*=\s*"([^"]+)"')
+STATE_LIKE_IDENTIFIER_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*(?:Loading|Error))\b')
+HTML_TAG_RE = re.compile(r'<(/?)([A-Za-z0-9:-]+)\b[^>]*?>')
 TAG_RE = re.compile(r'<[^>]+>')
+VOID_HTML_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 
 
 def page_leave_hook_re(hook_name: str) -> re.Pattern[str]:
@@ -52,6 +57,18 @@ def defined_methods_in(js: str) -> set[str]:
 
 def direct_method_calls(expr: str) -> list[str]:
     return [method for method in METHOD_CALL_RE.findall(expr) if method not in {"if"}]
+
+
+def defined_members_in(js: str) -> set[str]:
+    return defined_methods_in(js) | set(STATE_DEF_RE.findall(js))
+
+
+def undefined_state_like_identifiers(expr: str, defined_members: set[str]) -> set[str]:
+    return {
+        identifier
+        for identifier in STATE_LIKE_IDENTIFIER_RE.findall(expr)
+        if identifier not in defined_members
+    }
 
 
 def collect_route_lines(index_lines: list[str]) -> dict[str, list[tuple[int, str]]]:
@@ -75,6 +92,19 @@ def collect_route_lines(index_lines: list[str]) -> dict[str, list[tuple[int, str
             template_depth = 0
 
     return route_lines
+
+
+def html_tag_depth_delta(line: str) -> int:
+    depth_delta = 0
+    for match in HTML_TAG_RE.finditer(line):
+        closing, tag_name = match.groups()
+        tag_name = tag_name.lower()
+        tag_text = match.group(0)
+        if closing:
+            depth_delta -= 1
+        elif tag_name not in VOID_HTML_TAGS and not tag_text.rstrip().endswith('/>'):
+            depth_delta += 1
+    return depth_delta
 
 
 def normalize_button_label(label_html: str) -> str:
@@ -122,6 +152,7 @@ def main() -> int:
             continue
 
         defined_methods = defined_methods_in(js)
+        defined_members = defined_members_in(js)
 
         for _, attrs, line_number in matching_tags:
             xinit = XINIT_RE.search(attrs)
@@ -135,8 +166,30 @@ def main() -> int:
                     )
 
         route_name = page_file.stem
-        route_html = "\n".join(line for _, line in route_lines.get(route_name, []))
-        route_base_line = route_lines.get(route_name, [(1, "")])[0][0]
+        route_line_entries = route_lines.get(route_name, [])
+        route_html = "\n".join(line for _, line in route_line_entries)
+        route_base_line = route_line_entries[0][0] if route_line_entries else 1
+        route_root_lines = {line_number for _, _, line_number in matching_tags}
+        nested_xdata_depth = 0
+
+        for line_number, line in route_line_entries:
+            line_starts_nested_scope = 'x-data' in line and line_number not in route_root_lines
+            if line_starts_nested_scope:
+                nested_xdata_depth += max(1, html_tag_depth_delta(line))
+                continue
+
+            if nested_xdata_depth > 0:
+                nested_xdata_depth += html_tag_depth_delta(line)
+                continue
+
+            for expr_match in ROUTE_EXPR_RE.finditer(line):
+                expr = expr_match.group(1)
+                undefined_identifiers = sorted(undefined_state_like_identifiers(expr, defined_members))
+                for identifier in undefined_identifiers:
+                    errors.append(
+                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route expression references {identifier} but {component_name} does not define it"
+                    )
+
         for match in BUTTON_CLICK_RE.finditer(route_html):
             expr, label_html = match.groups()
             if not is_retry_or_refresh_label(label_html):

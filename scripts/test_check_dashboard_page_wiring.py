@@ -44,6 +44,36 @@ class DashboardPageWiringTests(unittest.TestCase):
         expr = 'if (loadError) refreshRuntime(); bootstrapOverview()'
         self.assertEqual(module.direct_method_calls(expr), ['refreshRuntime', 'bootstrapOverview'])
 
+    def test_defined_members_in_includes_state_and_methods(self):
+        js = """
+        function settingsPage() {
+            return {
+                loading: true,
+                loadError: '',
+                secLoading: false,
+                async loadSettings() {},
+                saveProviderUrl() {},
+            };
+        }
+        """
+
+        self.assertEqual(
+            module.defined_members_in(js),
+            {'loading', 'loadError', 'secLoading', 'loadSettings', 'saveProviderUrl'},
+        )
+
+    def test_undefined_state_like_identifiers_flags_missing_loading_symbol(self):
+        defined_members = {'loading', 'loadError', 'refreshRuntime'}
+
+        self.assertEqual(
+            module.undefined_state_like_identifiers('!settingsLoading && !loadError', defined_members),
+            {'settingsLoading'},
+        )
+        self.assertEqual(
+            module.undefined_state_like_identifiers('!loading && !loadError', defined_members),
+            set(),
+        )
+
     def test_collect_route_lines_groups_nested_template_body(self):
         index_lines = [
             '<template x-if="page === \'runtime\'">',
@@ -69,6 +99,11 @@ class DashboardPageWiringTests(unittest.TestCase):
                 ]
             },
         )
+
+    def test_html_tag_depth_delta_tracks_open_and_close_tags(self):
+        self.assertEqual(module.html_tag_depth_delta('<div x-data="budgetPage()">'), 1)
+        self.assertEqual(module.html_tag_depth_delta('</div>'), -1)
+        self.assertEqual(module.html_tag_depth_delta('<input type="text">'), 0)
 
     def test_page_leave_hook_regex_matches_expected_hook(self):
         hook_re = module.page_leave_hook_re('destroy')
