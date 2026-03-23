@@ -1606,7 +1606,7 @@ fn migrate_channels_from_json(
             // WhatsApp uses Baileys credential dir — copy it, warn user
             if let Some(ref auth_dir) = wa.auth_dir {
                 let src_path = PathBuf::from(auth_dir);
-                if src_path.exists() {
+                if is_directory(&src_path) {
                     let dest_creds = target.join("credentials").join("whatsapp");
                     if !dry_run {
                         if let Err(e) = copy_dir_recursive(&src_path, &dest_creds) {
@@ -1624,6 +1624,11 @@ fn migrate_channels_from_json(
                         "WhatsApp Baileys credentials copied — you may need to re-authenticate"
                             .to_string(),
                     );
+                } else if src_path.exists() {
+                    report.warnings.push(format!(
+                        "WhatsApp authDir is not a directory and was skipped: {}",
+                        src_path.display()
+                    ));
                 }
             }
             let mut fields: Vec<(&str, toml::Value)> = vec![(
@@ -1736,7 +1741,7 @@ fn migrate_channels_from_json(
         if gc.enabled.unwrap_or(true) {
             if let Some(ref sa_file) = gc.service_account_file {
                 let src_sa = PathBuf::from(sa_file);
-                if src_sa.exists() {
+                if is_regular_file(&src_sa) {
                     match std::fs::read_to_string(&src_sa) {
                         Ok(contents) => match serde_json::from_str::<serde_json::Value>(&contents) {
                             Ok(json) => {
@@ -1756,6 +1761,11 @@ fn migrate_channels_from_json(
                             "Failed to read Google Chat service account file for env migration: {e}"
                         )),
                     }
+                } else if src_sa.exists() {
+                    report.warnings.push(format!(
+                        "Google Chat service account path is not a file and was skipped for env migration: {}",
+                        src_sa.display()
+                    ));
                 } else {
                     report.warnings.push(format!(
                         "Google Chat service account file not found for env migration: {}",
@@ -5197,6 +5207,91 @@ mod tests {
             .imported
             .iter()
             .any(|i| i.kind == ItemKind::Secret && i.name == "GOOGLE_CHAT_SERVICE_ACCOUNT"));
+    }
+
+    #[test]
+    fn test_google_chat_directory_service_account_path_is_skipped() {
+        let target = TempDir::new().unwrap();
+        let service_account_dir = target.path().join("google-chat-service-account.json");
+        std::fs::create_dir_all(&service_account_dir).unwrap();
+        let json5_content = format!(
+            r#"{{
+  channels: {{
+    googlechat: {{
+      serviceAccountFile: {:?}
+    }}
+  }}
+}}"#,
+            service_account_dir.display().to_string()
+        );
+        let root: OpenClawRoot = json5::from_str(&json5_content).unwrap();
+        let mut report = MigrationReport::default();
+
+        let channels = migrate_channels_from_json(&root, target.path(), false, &mut report);
+        let channels = channels.unwrap();
+        let table = channels.as_table().unwrap();
+        let google_chat = table["google_chat"].as_table().unwrap();
+        assert_eq!(
+            google_chat["service_account_env"].as_str().unwrap(),
+            "GOOGLE_CHAT_SERVICE_ACCOUNT"
+        );
+        assert!(
+            report.warnings.iter().any(|warning| {
+                warning.contains("Google Chat service account path is not a file")
+                    && warning.contains(&service_account_dir.display().to_string())
+            }),
+            "expected wrong-type warning, got: {:?}",
+            report.warnings
+        );
+        assert!(
+            !target.path().join("secrets.env").exists(),
+            "directory service account path should not create secrets.env"
+        );
+        assert!(!report
+            .imported
+            .iter()
+            .any(|i| i.kind == ItemKind::Secret && i.name == "GOOGLE_CHAT_SERVICE_ACCOUNT"));
+    }
+
+    #[test]
+    fn test_whatsapp_file_auth_dir_is_skipped() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        let auth_file = source.path().join("baileys-auth.json");
+        std::fs::write(&auth_file, "not a directory").unwrap();
+        let json5_content = format!(
+            r#"{{
+  channels: {{
+    whatsapp: {{
+      authDir: {:?}
+    }}
+  }}
+}}"#,
+            auth_file.display().to_string()
+        );
+        let root: OpenClawRoot = json5::from_str(&json5_content).unwrap();
+        let mut report = MigrationReport::default();
+
+        let channels = migrate_channels_from_json(&root, target.path(), false, &mut report);
+        let channels = channels.unwrap();
+        let table = channels.as_table().unwrap();
+        assert!(table.contains_key("whatsapp"));
+        assert!(
+            report.warnings.iter().any(|warning| {
+                warning.contains("WhatsApp authDir is not a directory")
+                    && warning.contains(&auth_file.display().to_string())
+            }),
+            "expected wrong-type warning, got: {:?}",
+            report.warnings
+        );
+        assert!(
+            !target.path().join("credentials").join("whatsapp").exists(),
+            "file authDir should not create copied credential directory"
+        );
+        assert!(!report
+            .imported
+            .iter()
+            .any(|i| i.kind == ItemKind::Secret && i.name == "whatsapp/credentials"));
     }
 
     #[test]
