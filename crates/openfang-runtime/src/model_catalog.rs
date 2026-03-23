@@ -356,13 +356,9 @@ impl ModelCatalog {
     ///
     /// Merges them into the catalog. Skips models that already exist.
     pub fn load_custom_models(&mut self, path: &std::path::Path) {
-        let data = match std::fs::read_to_string(path) {
-            Ok(data) => data,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
-            Err(error) => {
-                warn!(path = %path.display(), %error, "Failed to read custom models file; skipping load");
-                return;
-            }
+        let data = match read_text_file_if_regular(path, "custom models") {
+            Some(data) => data,
+            None => return,
         };
         let entries = match serde_json::from_str::<Vec<ModelCatalogEntry>>(&data) {
             Ok(entries) => entries,
@@ -459,16 +455,33 @@ fn unix_now_secs() -> i64 {
         .as_secs() as i64
 }
 
-/// Read and parse JSON from a file path.
-fn read_json_file(path: &PathBuf) -> Option<serde_json::Value> {
-    let content = match std::fs::read_to_string(path) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
-        Err(error) => {
-            warn!(path = %path.display(), %error, "Failed to read credential JSON file; ignoring cached credentials");
+fn read_text_file_if_regular(path: &Path, context: &str) -> Option<String> {
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => {}
+        Ok(_) => {
+            warn!(path = %path.display(), context = context, "Expected regular file; ignoring non-file path");
             return None;
         }
-    };
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(error) => {
+            warn!(path = %path.display(), context = context, %error, "Failed to stat file path; ignoring path");
+            return None;
+        }
+    }
+
+    match std::fs::read_to_string(path) {
+        Ok(content) => Some(content),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => {
+            warn!(path = %path.display(), context = context, %error, "Failed to read file; ignoring path");
+            None
+        }
+    }
+}
+
+/// Read and parse JSON from a file path.
+fn read_json_file(path: &PathBuf) -> Option<serde_json::Value> {
+    let content = read_text_file_if_regular(path, "credential JSON")?;
 
     match serde_json::from_str(&content) {
         Ok(parsed) => Some(parsed),
@@ -4474,6 +4487,31 @@ mod tests {
     }
 
     #[test]
+    fn test_load_custom_models_directory_path_preserves_existing_custom_models() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "openfang-model-catalog-directory-test-{}",
+            Uuid::new_v4()
+        ));
+        let path = temp_root.join("custom-models.json");
+        std::fs::create_dir_all(&path).unwrap();
+
+        let mut catalog = ModelCatalog::new();
+        assert!(catalog.add_custom_model(sample_custom_model("existing-custom")));
+
+        catalog.load_custom_models(&path);
+
+        let custom_models: Vec<_> = catalog
+            .models_by_provider("custom-provider")
+            .into_iter()
+            .filter(|entry| entry.tier == ModelTier::Custom)
+            .collect();
+        assert_eq!(custom_models.len(), 1);
+        assert_eq!(custom_models[0].id, "existing-custom");
+
+        std::fs::remove_dir_all(&temp_root).unwrap();
+    }
+
+    #[test]
     fn test_read_json_file_returns_none_for_invalid_json() {
         let temp_root = std::env::temp_dir().join(format!(
             "openfang-model-catalog-read-json-invalid-{}",
@@ -4496,6 +4534,20 @@ mod tests {
         ));
         std::fs::create_dir_all(&temp_root).unwrap();
         let path = temp_root.join("credentials.json");
+
+        assert!(read_json_file(&path).is_none());
+
+        std::fs::remove_dir_all(&temp_root).unwrap();
+    }
+
+    #[test]
+    fn test_read_json_file_returns_none_for_directory_path() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "openfang-model-catalog-read-json-directory-{}",
+            Uuid::new_v4()
+        ));
+        let path = temp_root.join("credentials.json");
+        std::fs::create_dir_all(&path).unwrap();
 
         assert!(read_json_file(&path).is_none());
 
