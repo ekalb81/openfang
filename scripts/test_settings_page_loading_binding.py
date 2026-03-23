@@ -9,20 +9,21 @@ SETTINGS_JS = REPO_ROOT / "crates/openfang-api/static/js/pages/settings.js"
 
 class SettingsPageLoadingBindingTests(unittest.TestCase):
     def test_settings_template_uses_shared_loading_state(self):
-        html = INDEX_BODY.read_text()
-        match = re.search(
-            r'<div x-data="settingsPage\(\)" @page-leave\.window="destroy\(\)">(.*?)<!-- Network tab -->',
-            html,
-            re.S,
-        )
-        self.assertIsNotNone(match, "could not isolate settingsPage template block")
-        block = match.group(1)
+        block = self._settings_template_block()
 
         self.assertIn('x-init="loadSettings()"', block)
         self.assertIn('x-show="loading"', block)
         self.assertIn('x-show="!loading && loadError"', block)
         self.assertIn('x-show="!loading && !loadError"', block)
         self.assertNotIn('settingsLoading', block)
+
+    def test_settings_models_and_tools_empty_states_wait_for_shared_loading_flag(self):
+        block = self._settings_template_block()
+
+        self.assertIn('x-show="!filteredModels.length && !loading"', block)
+        self.assertIn('x-show="!filteredTools.length && !loading"', block)
+        self.assertNotIn('!filteredModels.length && !settingsLoading', block)
+        self.assertNotIn('!filteredTools.length && !settingsLoading', block)
 
     def test_settings_page_state_and_loader_keep_loading_contract(self):
         source = SETTINGS_JS.read_text()
@@ -39,6 +40,16 @@ class SettingsPageLoadingBindingTests(unittest.TestCase):
             ),
         )
         self.assertNotIn('settingsLoading', source)
+
+    def _settings_template_block(self) -> str:
+        html = INDEX_BODY.read_text()
+        match = re.search(
+            r'<div x-data="settingsPage\(\)" @page-leave\.window="destroy\(\)">(.*?)<!-- Network tab -->',
+            html,
+            re.S,
+        )
+        self.assertIsNotNone(match, "could not isolate settingsPage template block")
+        return match.group(1)
 
 
 if __name__ == "__main__":
