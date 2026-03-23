@@ -75,7 +75,7 @@ pub fn load_all_templates() -> Vec<AgentTemplate> {
                     continue;
                 }
                 let manifest = path.join("agent.toml");
-                if !manifest.exists() {
+                if !manifest.is_file() {
                     continue;
                 }
                 let name = entry.file_name().to_string_lossy().to_string();
