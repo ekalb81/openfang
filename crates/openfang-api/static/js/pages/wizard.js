@@ -453,6 +453,40 @@ function wizardPage() {
       }
     },
 
+    getAppStore() {
+      try {
+        return Alpine.store('app');
+      } catch (_error) {
+        return null;
+      }
+    },
+
+    async refreshAgentsIfAvailable() {
+      var appStore = this.getAppStore();
+      if (appStore && typeof appStore.refreshAgents === 'function') {
+        await appStore.refreshAgents();
+      }
+    },
+
+    dismissOnboarding() {
+      var appStore = this.getAppStore();
+      if (appStore) {
+        appStore.showOnboarding = false;
+      }
+    },
+
+    queuePendingAgent(agent) {
+      var appStore = this.getAppStore();
+      if (appStore) {
+        appStore.pendingAgent = {
+          id: agent.id,
+          name: agent.name,
+          model_provider: '?',
+          model_name: '?'
+        };
+      }
+    },
+
     async createAgent() {
       var tpl = this.templates[this.selectedTemplate];
       if (!tpl) return;
@@ -486,7 +520,7 @@ function wizardPage() {
           this.createdAgent = { id: res.agent_id, name: res.name || name };
           this.setupSummary.agent = res.name || name;
           OpenFangToast.success('Agent "' + (res.name || name) + '" created');
-          await Alpine.store('app').refreshAgents();
+          await this.refreshAgentsIfAvailable();
         } else {
           OpenFangToast.error('Failed: ' + (res.error || 'Unknown error'));
         }
@@ -560,11 +594,10 @@ function wizardPage() {
 
     finish() {
       localStorage.setItem('openfang-onboarded', 'true');
-      Alpine.store('app').showOnboarding = false;
+      this.dismissOnboarding();
       // Navigate to agents with chat if an agent was created, otherwise overview
       if (this.createdAgent) {
-        var agent = this.createdAgent;
-        Alpine.store('app').pendingAgent = { id: agent.id, name: agent.name, model_provider: '?', model_name: '?' };
+        this.queuePendingAgent(this.createdAgent);
         window.location.hash = 'agents';
       } else {
         window.location.hash = 'overview';
@@ -573,7 +606,7 @@ function wizardPage() {
 
     finishAndDismiss() {
       localStorage.setItem('openfang-onboarded', 'true');
-      Alpine.store('app').showOnboarding = false;
+      this.dismissOnboarding();
       window.location.hash = 'overview';
     }
   };
