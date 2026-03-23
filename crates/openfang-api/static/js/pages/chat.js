@@ -3,6 +3,15 @@
 
 function chatPage() {
   var msgId = 0;
+
+  function getAppStore() {
+    try {
+      return Alpine.store('app');
+    } catch (e) {
+      return null;
+    }
+  }
+
   return {
     currentAgent: null,
     messages: [],
@@ -173,19 +182,24 @@ function chatPage() {
       });
 
       // Check for pending agent from Agents page (set before chat mounted)
-      var store = Alpine.store('app');
-      if (store.pendingAgent) {
+      var store = getAppStore();
+      if (store && store.pendingAgent) {
         self.selectAgent(store.pendingAgent);
         store.pendingAgent = null;
       }
 
       // Watch for future pending agent selections (e.g., user clicks agent while on chat)
-      this.$watch('$store.app.pendingAgent', function(agent) {
-        if (agent) {
-          self.selectAgent(agent);
-          Alpine.store('app').pendingAgent = null;
-        }
-      });
+      if (store) {
+        this.$watch('$store.app.pendingAgent', function(agent) {
+          if (agent) {
+            self.selectAgent(agent);
+            var liveStore = getAppStore();
+            if (liveStore) {
+              liveStore.pendingAgent = null;
+            }
+          }
+        });
+      }
 
       // Watch for slash commands + model autocomplete
       this.$watch('inputText', function(val) {
@@ -627,15 +641,24 @@ function chatPage() {
 
       OpenFangAPI.wsConnect(agentId, {
         onOpen: function() {
-          Alpine.store('app').wsConnected = true;
+          var store = getAppStore();
+          if (store) {
+            store.wsConnected = true;
+          }
         },
         onMessage: function(data) { self.handleWsMessage(data); },
         onClose: function() {
-          Alpine.store('app').wsConnected = false;
+          var store = getAppStore();
+          if (store) {
+            store.wsConnected = false;
+          }
           self._wsAgent = null;
         },
         onError: function() {
-          Alpine.store('app').wsConnected = false;
+          var store = getAppStore();
+          if (store) {
+            store.wsConnected = false;
+          }
           self._wsAgent = null;
         }
       });
@@ -879,8 +902,11 @@ function chatPage() {
 
         case 'agents_updated':
           if (data.agents) {
-            Alpine.store('app').agents = data.agents;
-            Alpine.store('app').agentCount = data.agents.length;
+            var store = getAppStore();
+            if (store) {
+              store.agents = data.agents;
+              store.agentCount = data.agents.length;
+            }
           }
           break;
 
@@ -1070,7 +1096,10 @@ function chatPage() {
           self.currentAgent = null;
           self.messages = [];
           OpenFangToast.success('Agent "' + name + '" stopped');
-          Alpine.store('app').refreshAgents();
+          var store = getAppStore();
+          if (store && typeof store.refreshAgents === 'function') {
+            store.refreshAgents();
+          }
         } catch(e) {
           OpenFangToast.error('Failed to stop agent: ' + e.message);
         }
