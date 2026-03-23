@@ -62,6 +62,7 @@ function chatPage() {
       { cmd: '/a2a', desc: 'List discovered external A2A agents' }
     ],
     tokenCount: 0,
+    _keydownHandler: null,
 
     // ── Tip Bar ──
     tipIndex: 0,
@@ -144,7 +145,7 @@ function chatPage() {
       this.fetchCommands();
 
       // Ctrl+/ keyboard shortcut
-      document.addEventListener('keydown', function(e) {
+      this._keydownHandler = function(e) {
         if ((e.ctrlKey || e.metaKey) && e.key === '/') {
           e.preventDefault();
           var input = document.getElementById('msg-input');
@@ -160,7 +161,8 @@ function chatPage() {
           e.preventDefault();
           self.toggleSearch();
         }
-      });
+      };
+      document.addEventListener('keydown', this._keydownHandler);
 
       // Load session + session list when agent changes
       this.$watch('currentAgent', function(agent) {
@@ -210,6 +212,35 @@ function chatPage() {
           self.showModelPicker = false;
         }
       });
+    },
+
+    destroy() {
+      if (this.tipTimer) {
+        clearInterval(this.tipTimer);
+        this.tipTimer = null;
+      }
+      if (this._typingTimeout) {
+        clearTimeout(this._typingTimeout);
+        this._typingTimeout = null;
+      }
+      if (this._latexTimer) {
+        clearTimeout(this._latexTimer);
+        this._latexTimer = null;
+      }
+      if (this._recordingTimer) {
+        clearInterval(this._recordingTimer);
+        this._recordingTimer = null;
+      }
+      if (this._mediaRecorder && this.recording) {
+        try { this._mediaRecorder.stop(); } catch(e) {}
+      }
+      this.recording = false;
+      this.recordingTime = 0;
+      if (this._keydownHandler) {
+        document.removeEventListener('keydown', this._keydownHandler);
+        this._keydownHandler = null;
+      }
+      OpenFangAPI.wsDisconnect();
     },
 
     get filteredModelPicker() {

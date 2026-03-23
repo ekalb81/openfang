@@ -545,7 +545,7 @@
 
         <!-- MODE 1: Inline Chat (agent selected) -->
         <template x-if="activeChatAgent">
-          <div x-data="chatPage()" class="chat-wrapper">
+          <div x-data="chatPage()" class="chat-wrapper" @close-chat.window="destroy()" @page-leave.window="destroy()">
             <!-- Chat header with back button -->
             <div class="page-header" x-show="currentAgent">
               <div class="flex items-center gap-2" style="min-width:0">
