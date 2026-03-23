@@ -362,6 +362,11 @@ function settingsPage() {
       return 'No Key Needed';
     },
 
+    providerSummaryText() {
+      var providerCount = this.providers.length || 20;
+      return 'OpenFang supports ' + providerCount + ' LLM providers out of the box. Configure API keys to unlock models from each provider. Set environment variables and restart, or use the form below to save keys directly.';
+    },
+
     providerCardClass(p) {
       if (p.auth_status === 'configured') return 'configured';
       if (p.auth_status === 'not_set' || p.auth_status === 'missing') return 'not-configured';
