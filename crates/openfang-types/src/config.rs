@@ -3430,6 +3430,11 @@ impl KernelConfig {
                 ));
             }
         }
+        if let Some(ref wc) = self.channels.wecom {
+            if std::env::var(&wc.secret_env).unwrap_or_default().is_empty() {
+                warnings.push(format!("WeCom configured but {} is not set", wc.secret_env));
+            }
+        }
 
         // Web search provider validation
         match self.web.search_provider {
@@ -3624,6 +3629,19 @@ mod tests {
         let warnings = config.validate();
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("Discord"));
+    }
+
+    #[test]
+    fn test_validate_missing_wecom_secret_env() {
+        let mut config = KernelConfig::default();
+        config.channels.wecom = Some(WeComConfig {
+            secret_env: "OPENFANG_TEST_NONEXISTENT_VAR_WECOM".to_string(),
+            ..Default::default()
+        });
+        let warnings = config.validate();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("WeCom"));
+        assert!(warnings[0].contains("OPENFANG_TEST_NONEXISTENT_VAR_WECOM"));
     }
 
     #[test]
