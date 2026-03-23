@@ -4926,7 +4926,7 @@ pub async fn list_templates() -> impl IntoResponse {
             let path = entry.path();
             if path.is_dir() {
                 let manifest_path = path.join("agent.toml");
-                if manifest_path.exists() {
+                if manifest_path.is_file() {
                     let name = path
                         .file_name()
                         .unwrap_or_default()
@@ -4959,7 +4959,7 @@ pub async fn get_template(Path(name): Path<String>) -> impl IntoResponse {
     let agents_dir = openfang_kernel::config::openfang_home().join("agents");
     let manifest_path = agents_dir.join(&name).join("agent.toml");
 
-    if !manifest_path.exists() {
+    if !manifest_path.is_file() {
         return (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "Template not found"})),
