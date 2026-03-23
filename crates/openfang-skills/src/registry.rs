@@ -16,6 +16,10 @@ fn skills_root_is_dir(path: &Path) -> bool {
     path.is_dir()
 }
 
+fn installed_skill_path_is_dir(path: &Path) -> bool {
+    path.is_dir()
+}
+
 /// Registry of installed skills.
 #[derive(Debug, Default)]
 pub struct SkillRegistry {
@@ -246,9 +250,21 @@ impl SkillRegistry {
             .remove(name)
             .ok_or_else(|| SkillError::NotFound(name.to_string()))?;
 
-        // Remove the skill directory
-        if skill.path.exists() {
-            std::fs::remove_dir_all(&skill.path)?;
+        // Remove the skill directory only when it is still a real directory.
+        // Non-directory placeholders should surface as explicit state errors instead
+        // of flowing into remove_dir_all with a misleading failure mode.
+        match std::fs::metadata(&skill.path) {
+            Ok(meta) if installed_skill_path_is_dir(&skill.path) && meta.is_dir() => {
+                std::fs::remove_dir_all(&skill.path)?;
+            }
+            Ok(_) => {
+                return Err(SkillError::Io(std::io::Error::other(format!(
+                    "installed skill path is not a directory: {}",
+                    skill.path.display()
+                ))));
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(SkillError::Io(err)),
         }
 
         info!("Removed skill: {name}");
@@ -477,6 +493,7 @@ input_schema = {{ type = "object" }}
     fn test_remove_skill() {
         let dir = TempDir::new().unwrap();
         create_test_skill(dir.path(), "removable");
+        let skill_path = dir.path().join("removable");
 
         let mut registry = SkillRegistry::new(dir.path().to_path_buf());
         registry.load_all().unwrap();
@@ -484,6 +501,23 @@ input_schema = {{ type = "object" }}
 
         registry.remove("removable").unwrap();
         assert_eq!(registry.count(), 0);
+        assert!(!skill_path.exists());
+    }
+
+    #[test]
+    fn test_remove_skill_rejects_non_directory_placeholder() {
+        let dir = TempDir::new().unwrap();
+        create_test_skill(dir.path(), "removable");
+        let skill_path = dir.path().join("removable");
+        std::fs::remove_dir_all(&skill_path).unwrap();
+        std::fs::write(&skill_path, "not a directory").unwrap();
+
+        let mut registry = SkillRegistry::new(dir.path().to_path_buf());
+        registry.load_all().unwrap();
+
+        let err = registry.remove("removable").unwrap_err();
+        assert!(matches!(err, SkillError::Io(_)));
+        assert!(skill_path.is_file());
     }
 
     #[test]
