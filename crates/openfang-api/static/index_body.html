@@ -207,7 +207,7 @@
 
     <!-- Page: Overview -->
     <template x-if="page === 'overview'">
-      <div x-data="overviewPage()" x-init="loadOverview().then(() => startAutoRefresh())" @page-leave.window="stopAutoRefresh()">
+      <div x-data="overviewPage()" x-init="loadOverview().then(() => startAutoRefresh())" @page-leave.window="destroy()">
         <div class="page-header">
           <h2>Overview</h2>
           <div class="flex items-center gap-2">

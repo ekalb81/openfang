@@ -69,6 +69,10 @@ function overviewPage() {
       }
     },
 
+    destroy() {
+      this.stopAutoRefresh();
+    },
+
     async loadHealth() {
       try {
         this.health = await OpenFangAPI.get('/api/health');
