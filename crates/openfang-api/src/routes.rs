@@ -11538,78 +11538,82 @@ pub async fn config_schema(State(state): State<Arc<AppState>>) -> impl IntoRespo
         .collect();
     drop(catalog);
 
+    let field = |name: &str, field_type: &str, label: &str| {
+        serde_json::json!({"name": name, "type": field_type, "label": label})
+    };
+
     Json(serde_json::json!({
         "sections": {
             "general": {
                 "root_level": true,
-                "fields": {
-                    "api_listen": "string",
-                    "api_key": "string",
-                    "log_level": "string"
-                }
+                "fields": [
+                    field("api_listen", "string", "API Listen Address"),
+                    field("api_key", "string", "API Key"),
+                    field("log_level", "string", "Log Level")
+                ]
             },
             "default_model": {
                 "hot_reloadable": true,
-                "fields": {
-                    "provider": { "type": "select", "options": provider_options },
-                    "model": { "type": "select", "options": model_options },
-                    "api_key_env": "string",
-                    "base_url": "string"
-                }
+                "fields": [
+                    { "name": "provider", "type": "select", "label": "Provider", "options": provider_options },
+                    { "name": "model", "type": "select", "label": "Model", "options": model_options },
+                    field("api_key_env", "string", "API Key Env Var"),
+                    field("base_url", "string", "Base URL")
+                ]
             },
             "memory": {
-                "fields": {
-                    "decay_rate": "number",
-                    "vector_dims": "number"
-                }
+                "fields": [
+                    field("decay_rate", "number", "Decay Rate"),
+                    field("vector_dims", "number", "Vector Dimensions")
+                ]
             },
             "web": {
-                "fields": {
-                    "provider": "string",
-                    "timeout_secs": "number",
-                    "max_results": "number"
-                }
+                "fields": [
+                    field("provider", "string", "Search Provider"),
+                    field("timeout_secs", "number", "Timeout (seconds)"),
+                    field("max_results", "number", "Max Results")
+                ]
             },
             "browser": {
-                "fields": {
-                    "headless": "boolean",
-                    "timeout_secs": "number",
-                    "executable_path": "string"
-                }
+                "fields": [
+                    field("headless", "boolean", "Headless Mode"),
+                    field("timeout_secs", "number", "Timeout (seconds)"),
+                    field("executable_path", "string", "Chrome/Chromium Path")
+                ]
             },
             "network": {
-                "fields": {
-                    "enabled": "boolean",
-                    "listen_addr": "string",
-                    "shared_secret": "string"
-                }
+                "fields": [
+                    field("enabled", "boolean", "Enable OFP Network"),
+                    field("listen_addr", "string", "Listen Address"),
+                    field("shared_secret", "string", "Shared Secret")
+                ]
             },
             "extensions": {
-                "fields": {
-                    "auto_connect": "boolean",
-                    "health_check_interval_secs": "number"
-                }
+                "fields": [
+                    field("auto_connect", "boolean", "Auto Connect"),
+                    field("health_check_interval_secs", "number", "Health Check Interval (s)")
+                ]
             },
             "vault": {
-                "fields": {
-                    "path": "string"
-                }
+                "fields": [
+                    field("path", "string", "Vault Path")
+                ]
             },
             "a2a": {
-                "fields": {
-                    "enabled": "boolean",
-                    "name": "string",
-                    "description": "string",
-                    "url": "string"
-                }
+                "fields": [
+                    field("enabled", "boolean", "Enable A2A"),
+                    field("name", "string", "Agent Name"),
+                    field("description", "string", "Description"),
+                    field("url", "string", "URL")
+                ]
             },
             "channels": {
-                "fields": {
-                    "telegram": "object",
-                    "discord": "object",
-                    "slack": "object",
-                    "whatsapp": "object"
-                }
+                "fields": [
+                    field("telegram", "object", "Telegram"),
+                    field("discord", "object", "Discord"),
+                    field("slack", "object", "Slack"),
+                    field("whatsapp", "object", "WhatsApp")
+                ]
             }
         }
     }))
