@@ -17,7 +17,7 @@ async function loadPageWithStore(storeImpl) {
         return {
           sessions: [
             { session_id: 'sess-1', agent_id: 'agent-1', message_count: 3 },
-            { session_id: 'sess-2', agent_id: 'agent-2', message_count: 1 },
+            { session_id: 'sess-2', agent_id: 'agent-2', agent_name: 'Stored Beta', message_count: 1 },
           ],
         };
       },
@@ -55,7 +55,7 @@ async function loadPageWithStore(storeImpl) {
   assert.strictEqual(pageWithAgents.loadError, '', 'loadSessions should succeed when the app store has agents');
   assert.strictEqual(pageWithAgents.loading, false, 'loadSessions should finish loading when agents are available');
   assert.strictEqual(pageWithAgents.sessions[0].agent_name, 'Alpha', 'loadSessions should map known agent IDs to agent names');
-  assert.strictEqual(pageWithAgents.sessions[1].agent_name, '', 'loadSessions should leave unknown agent IDs unmapped');
+  assert.strictEqual(pageWithAgents.sessions[1].agent_name, 'Stored Beta', 'loadSessions should preserve a session-provided agent name when the app store does not know the agent');
 
   pageWithAgents.openInChat(pageWithAgents.sessions[0]);
   assert.strictEqual(healthyStore.pendingAgent.id, 'agent-1', 'openInChat should reuse the full known agent object when the app store is available');
@@ -97,7 +97,7 @@ async function loadPageWithStore(storeImpl) {
   assert.strictEqual(pageWithoutStore.loadError, '', 'loadSessions should not fail if the app store is temporarily unavailable');
   assert.strictEqual(pageWithoutStore.loading, false, 'loadSessions should finish loading even without the app store');
   assert.strictEqual(pageWithoutStore.sessions.length, 1, 'loadSessions should still populate sessions without the app store');
-  assert.strictEqual(pageWithoutStore.sessions[0].agent_name, '', 'agent names should fall back to blank when the app store is unavailable');
+  assert.strictEqual(pageWithoutStore.sessions[0].agent_name, '', 'agent names should still fall back to blank when neither the app store nor the session payload provides a name');
 
   pageWithoutStore.openInChat(pageWithoutStore.sessions[0]);
   assert.strictEqual(unavailableHash, 'agents', 'openInChat should still navigate to the agents page when the app store is unavailable');

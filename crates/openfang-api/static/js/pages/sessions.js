@@ -36,7 +36,7 @@ function sessionsPage() {
         var agentMap = {};
         agents.forEach(function(a) { agentMap[a.id] = a.name; });
         sessions.forEach(function(s) {
-          s.agent_name = agentMap[s.agent_id] || '';
+          s.agent_name = agentMap[s.agent_id] || s.agent_name || '';
         });
         this.sessions = sessions;
       } catch(e) {
