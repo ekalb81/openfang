@@ -770,6 +770,55 @@ class DashboardPageWiringTests(unittest.TestCase):
                 stderr.getvalue(),
             )
 
+    def test_main_flags_route_root_missing_init_call_for_page_init_method(self):
+        import tempfile
+        import io
+        from contextlib import redirect_stderr
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pages_dir = root / 'crates/openfang-api/static/js/pages'
+            pages_dir.mkdir(parents=True)
+            (pages_dir / 'agents.js').write_text(
+                """
+                function agentsPage() {
+                    return {
+                        loading: true,
+                        init() {},
+                    };
+                }
+                """,
+                encoding='utf-8',
+            )
+            (root / 'crates/openfang-api/static/index_body.html').write_text(
+                """
+                <template x-if="page === 'agents'">
+                  <section x-data="agentsPage()"></section>
+                </template>
+                """,
+                encoding='utf-8',
+            )
+
+            old_repo_root = module.REPO_ROOT
+            old_pages_dir = module.PAGES_DIR
+            old_index_body = module.INDEX_BODY
+            stderr = io.StringIO()
+            try:
+                module.REPO_ROOT = root
+                module.PAGES_DIR = pages_dir
+                module.INDEX_BODY = root / 'crates/openfang-api/static/index_body.html'
+                with redirect_stderr(stderr):
+                    self.assertEqual(module.main(), 1)
+            finally:
+                module.REPO_ROOT = old_repo_root
+                module.PAGES_DIR = old_pages_dir
+                module.INDEX_BODY = old_index_body
+
+            self.assertIn(
+                'agentsPage defines init() but its route root is missing x-init="init()"',
+                stderr.getvalue(),
+            )
+
 
 if __name__ == '__main__':
     unittest.main()

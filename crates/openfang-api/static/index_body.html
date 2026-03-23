@@ -541,7 +541,7 @@
 
     <!-- Page: Agents -->
     <template x-if="page === 'agents'">
-      <div x-data="agentsPage()" @close-chat.window="closeChat()">
+      <div x-data="agentsPage()" x-init="init()" @close-chat.window="closeChat()">
 
         <!-- MODE 1: Inline Chat (agent selected) -->
         <template x-if="activeChatAgent">

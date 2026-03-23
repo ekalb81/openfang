@@ -277,6 +277,12 @@ def main() -> int:
 
             for _, attrs, line_number in matching_tags:
                 xinit = XINIT_RE.search(attrs)
+                if line_number in route_root_line_numbers and 'init' in defined_methods and (
+                    not xinit or 'init' not in direct_method_calls(xinit.group(1))
+                ):
+                    errors.append(
+                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: {component_name} defines init() but its route root is missing x-init=\"init()\""
+                    )
                 if not xinit:
                     continue
 
