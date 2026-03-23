@@ -10967,11 +10967,9 @@ pub async fn list_agent_files(
     let mut files = Vec::new();
     for &name in KNOWN_IDENTITY_FILES {
         let path = workspace.join(name);
-        let (exists, size_bytes) = if path.exists() {
-            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-            (true, size)
-        } else {
-            (false, 0u64)
+        let (exists, size_bytes) = match std::fs::metadata(&path) {
+            Ok(metadata) if metadata.is_file() => (true, metadata.len()),
+            _ => (false, 0u64),
         };
         files.push(serde_json::json!({
             "name": name,
