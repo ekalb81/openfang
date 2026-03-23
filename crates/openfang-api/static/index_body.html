@@ -4334,7 +4334,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Logs -->
     <template x-if="page === 'logs'">
-      <div x-data="logsPage()" @page-leave.window="destroy()">
+      <div x-data="logsPage()" x-init="init()" @page-leave.window="destroy()">
         <div class="page-header">
           <h2>Logs</h2>
           <div class="flex gap-2 items-center" x-show="tab === 'live'">
