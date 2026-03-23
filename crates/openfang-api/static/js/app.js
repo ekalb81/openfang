@@ -199,7 +199,10 @@ document.addEventListener('alpine:init', function() {
         }
         this.pendingApprovalCount = pending.length;
         this.lastPendingApprovalSignature = signature;
-      } catch(e) { /* silent */ }
+      } catch(e) {
+        this.pendingApprovalCount = 0;
+        this.lastPendingApprovalSignature = '';
+      }
     },
 
     async checkStatus() {

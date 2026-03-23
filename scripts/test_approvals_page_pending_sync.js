@@ -70,6 +70,22 @@ assert.strictEqual(typeof context.approvalsPage, 'function', 'approvalsPage shou
   assert.strictEqual(appStore.pendingApprovalCount, 1, 'array-shaped responses should still sync pending counts');
   assert.strictEqual(appStore.lastPendingApprovalSignature, 'x', 'array-shaped responses should still normalize signatures');
 
+  apiResponse = new Error('approvals fetch failed');
+  context.OpenFangAPI.get = async function(url) {
+    assert.strictEqual(url, '/api/approvals');
+    if (apiResponse instanceof Error) {
+      throw apiResponse;
+    }
+    return apiResponse;
+  };
+  const failedPage = context.approvalsPage();
+  await failedPage.loadData();
+
+  assert.strictEqual(failedPage.approvals.length, 0, 'loadData should clear stale approvals after fetch failures');
+  assert.strictEqual(appStore.pendingApprovalCount, 0, 'fetch failures should clear stale pending badge counts');
+  assert.strictEqual(appStore.lastPendingApprovalSignature, '', 'fetch failures should clear stale pending signatures');
+  assert.strictEqual(failedPage.loadError, 'approvals fetch failed', 'fetch failures should surface the approval load error');
+
   throwOnStore = true;
   apiResponse = {
     approvals: [
@@ -84,5 +100,5 @@ assert.strictEqual(typeof context.approvalsPage, 'function', 'approvalsPage shou
   assert.strictEqual(pageWithoutStore.approvals.length, 3, 'loadData should still populate approvals when the shared app store throws');
   assert.strictEqual(pageWithoutStore.loading, false, 'loadData should still finish when the shared app store is unavailable');
   assert.strictEqual(pageWithoutStore.loadError, '', 'store lookup failures should not surface as load errors');
-  assert.strictEqual(appStore.pendingApprovalCount, 1, 'store lookup failures should leave the last synced badge count untouched');
+  assert.strictEqual(appStore.pendingApprovalCount, 0, 'store lookup failures should leave the last synced badge count untouched');
 })();

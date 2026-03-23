@@ -59,6 +59,8 @@ function approvalsPage() {
         this.approvals = Array.isArray(data) ? data : ((data && data.approvals) || []);
         this.syncPendingApprovalStore();
       } catch(e) {
+        this.approvals = [];
+        this.syncPendingApprovalStore();
         this.loadError = e.message || 'Could not load approvals.';
       }
       this.loading = false;
