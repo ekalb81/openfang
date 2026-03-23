@@ -34,7 +34,7 @@ All adapters share a common foundation: graceful shutdown via `watch::channel`, 
 | Slack | Socket Mode WebSocket | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | `Slack` |
 | WhatsApp | Cloud API webhook | `WA_ACCESS_TOKEN`, `WA_PHONE_ID`, `WA_VERIFY_TOKEN` | `WhatsApp` |
 | Signal | signal-cli REST/JSON-RPC | _(system service)_ | `Signal` |
-| Matrix | Client-Server API `/sync` | `MATRIX_TOKEN` | `Matrix` |
+| Matrix | Client-Server API `/sync` | `MATRIX_ACCESS_TOKEN` | `Matrix` |
 | Email | IMAP + SMTP | `EMAIL_PASSWORD` | `Email` |
 
 ### Enterprise (8)
@@ -57,7 +57,7 @@ All adapters share a common foundation: graceful shutdown via `watch::channel`, 
 | LINE | Messaging API webhook | `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_TOKEN` | `Custom("line")` |
 | Viber | Bot API webhook | `VIBER_AUTH_TOKEN` | `Custom("viber")` |
 | Facebook Messenger | Platform API webhook | `MESSENGER_PAGE_TOKEN`, `MESSENGER_VERIFY_TOKEN` | `Custom("messenger")` |
-| Mastodon | Streaming API WebSocket | `MASTODON_TOKEN`, `MASTODON_INSTANCE` | `Custom("mastodon")` |
+| Mastodon | Streaming API WebSocket | `MASTODON_ACCESS_TOKEN` | `Custom("mastodon")` |
 | Bluesky | AT Protocol WebSocket | `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD` | `Custom("bluesky")` |
 | Reddit | OAuth2 polling | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USERNAME`, `REDDIT_PASSWORD` | `Custom("reddit")` |
 | LinkedIn | Messaging API polling | `LINKEDIN_ACCESS_TOKEN` | `Custom("linkedin")` |
@@ -139,14 +139,14 @@ default_agent = "ops"
 
 # Social example
 [channels.mastodon]
-token_env = "MASTODON_TOKEN"
-instance = "https://mastodon.social"
+instance_url = "https://mastodon.social"
+access_token_env = "MASTODON_ACCESS_TOKEN"
 default_agent = "social-media"
 ```
 
 ### Common Fields
 
-- `bot_token_env` / `token_env` -- The environment variable holding the bot/access token. OpenFang reads the token from this env var at startup. All secrets are stored as `Zeroizing<String>` and wiped from memory on drop.
+- Secret env-var fields vary by adapter (`bot_token_env`, `access_token_env`, `app_token_env`, `token_env`, etc.). OpenFang reads secrets from the configured env var names at startup. All secrets are stored as `Zeroizing<String>` and wiped from memory on drop.
 - `default_agent` -- The agent name (or ID) that receives messages when no specific routing applies.
 - `allowed_users` -- Optional list of platform user IDs allowed to interact. Empty means allow all.
 - `overrides` -- Optional per-channel behavior overrides (see [Channel Overrides](#channel-overrides) below).
@@ -159,7 +159,7 @@ default_agent = "social-media"
 | Discord | `DISCORD_BOT_TOKEN` |
 | Slack | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` |
 | WhatsApp | `WA_ACCESS_TOKEN`, `WA_PHONE_ID`, `WA_VERIFY_TOKEN` |
-| Matrix | `MATRIX_TOKEN` |
+| Matrix | `MATRIX_ACCESS_TOKEN` |
 | Email | `EMAIL_PASSWORD` |
 
 Env vars for all other channels are listed in the [All 40 Channels](#all-40-channels) tables above.
@@ -473,7 +473,7 @@ The Signal adapter spawns `signal-cli` as a subprocess in daemon mode and commun
 3. Set the environment variable:
 
 ```bash
-export MATRIX_TOKEN=syt_...
+export MATRIX_ACCESS_TOKEN=syt_...
 ```
 
 4. Add to config:
@@ -481,7 +481,7 @@ export MATRIX_TOKEN=syt_...
 ```toml
 [channels.matrix]
 homeserver_url = "https://matrix.org"
-access_token_env = "MATRIX_TOKEN"
+access_token_env = "MATRIX_ACCESS_TOKEN"
 user_id = "@openfang-bot:matrix.org"
 default_agent = "assistant"
 auto_accept_invites = false
