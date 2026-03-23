@@ -1937,7 +1937,7 @@ const CHANNEL_REGISTRY: &[ChannelMeta] = &[
             "Generate an access token",
             "Paste token and homeserver URL below",
         ],
-        config_template: "[channels.matrix]\naccess_token_env = \"MATRIX_ACCESS_TOKEN\"\nhomeserver_url = \"https://matrix.org\"",
+        config_template: "[channels.matrix]\naccess_token_env = \"MATRIX_ACCESS_TOKEN\"\nhomeserver_url = \"https://matrix.org\"\nauto_accept_invites = false",
     },
     ChannelMeta {
         name: "email",
