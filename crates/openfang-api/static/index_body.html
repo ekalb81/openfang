@@ -5014,7 +5014,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- ─── Runtime page ─── -->
     <template x-if="page === 'runtime'">
-      <div x-data="runtimePage">
+      <div x-data="runtimePage()">
         <div class="page-header"><h2>Runtime</h2></div>
         <div class="page-body" x-init="loadData()">
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading runtime info...</span></div>

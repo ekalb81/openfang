@@ -200,7 +200,7 @@ def main() -> int:
             expected_xdata_values = [f"{component_name}()"]
         else:
             component_name = alpine_data_match.group(1)
-            expected_xdata_values = [component_name, f"{component_name}()"]
+            expected_xdata_values = [f"{component_name}()"]
 
         matching_tags = [tag for tag in route_tags if tag[0] in expected_xdata_values]
         expected_display = " or ".join(f'x-data="{value}"' for value in expected_xdata_values)
