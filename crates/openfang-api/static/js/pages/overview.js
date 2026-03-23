@@ -180,10 +180,19 @@ function overviewPage() {
     // ── Setup Checklist ──
     checklistDismissed: localStorage.getItem('of-checklist-dismissed') === 'true',
 
+    appAgents() {
+      try {
+        var appStore = Alpine.store('app');
+        return (appStore && appStore.agents) || [];
+      } catch(_err) {
+        return [];
+      }
+    },
+
     get setupChecklist() {
       return [
         { key: 'provider', label: 'Configure an LLM provider', done: this.configuredProviders.length > 0, action: '#settings' },
-        { key: 'agent', label: 'Create your first agent', done: (Alpine.store('app').agents || []).length > 0, action: '#agents' },
+        { key: 'agent', label: 'Create your first agent', done: this.appAgents().length > 0, action: '#agents' },
         { key: 'chat', label: 'Send your first message', done: localStorage.getItem('of-first-msg') === 'true', action: '#chat' },
         { key: 'channel', label: 'Connect a messaging channel', done: this.channels.length > 0, action: '#channels' },
         { key: 'skill', label: 'Browse or install a skill', done: localStorage.getItem('of-skill-browsed') === 'true', action: '#skills' }
@@ -284,7 +293,7 @@ function overviewPage() {
     // Resolve agent UUID to name if possible
     agentName(agentId) {
       if (!agentId) return '-';
-      var agents = Alpine.store('app').agents || [];
+      var agents = this.appAgents();
       var agent = agents.find(function(a) { return a.id === agentId; });
       return agent ? agent.name : agentId.substring(0, 8) + '\u2026';
     }
