@@ -3168,6 +3168,15 @@ impl KernelConfig {
         }
         // Wave 3 channels
         if let Some(ref ln) = self.channels.line {
+            if std::env::var(&ln.channel_secret_env)
+                .unwrap_or_default()
+                .is_empty()
+            {
+                warnings.push(format!(
+                    "LINE configured but {} is not set",
+                    ln.channel_secret_env
+                ));
+            }
             if std::env::var(&ln.access_token_env)
                 .unwrap_or_default()
                 .is_empty()
@@ -3383,6 +3392,12 @@ impl KernelConfig {
                     dt.access_token_env
                 ));
             }
+            if std::env::var(&dt.secret_env).unwrap_or_default().is_empty() {
+                warnings.push(format!(
+                    "DingTalk configured but {} is not set",
+                    dt.secret_env
+                ));
+            }
         }
         if let Some(ref ds) = self.channels.dingtalk_stream {
             if std::env::var(&ds.app_key_env)
@@ -3401,6 +3416,15 @@ impl KernelConfig {
                 warnings.push(format!(
                     "DingTalk Stream configured but {} is not set",
                     ds.app_secret_env
+                ));
+            }
+            if std::env::var(&ds.robot_code_env)
+                .unwrap_or_default()
+                .is_empty()
+            {
+                warnings.push(format!(
+                    "DingTalk Stream configured but {} is not set",
+                    ds.robot_code_env
                 ));
             }
         }
@@ -3435,6 +3459,15 @@ impl KernelConfig {
                 warnings.push(format!(
                     "Gotify configured but {} is not set",
                     gf.app_token_env
+                ));
+            }
+            if std::env::var(&gf.client_token_env)
+                .unwrap_or_default()
+                .is_empty()
+            {
+                warnings.push(format!(
+                    "Gotify configured but {} is not set",
+                    gf.client_token_env
                 ));
             }
         }
@@ -3669,6 +3702,45 @@ mod tests {
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("WeCom"));
         assert!(warnings[0].contains("OPENFANG_TEST_NONEXISTENT_VAR_WECOM"));
+    }
+
+    #[test]
+    fn test_validate_missing_additional_channel_envs() {
+        let mut config = KernelConfig::default();
+        config.channels.line = Some(LineConfig {
+            channel_secret_env: "OPENFANG_TEST_NONEXISTENT_VAR_LINE_SECRET".to_string(),
+            access_token_env: "OPENFANG_TEST_NONEXISTENT_VAR_LINE_ACCESS".to_string(),
+            ..Default::default()
+        });
+        config.channels.dingtalk = Some(DingTalkConfig {
+            access_token_env: "OPENFANG_TEST_NONEXISTENT_VAR_DINGTALK_ACCESS".to_string(),
+            secret_env: "OPENFANG_TEST_NONEXISTENT_VAR_DINGTALK_SECRET".to_string(),
+            ..Default::default()
+        });
+        config.channels.dingtalk_stream = Some(DingTalkStreamConfig {
+            app_key_env: "OPENFANG_TEST_NONEXISTENT_VAR_DINGTALK_STREAM_APP_KEY".to_string(),
+            app_secret_env: "OPENFANG_TEST_NONEXISTENT_VAR_DINGTALK_STREAM_APP_SECRET".to_string(),
+            robot_code_env: "OPENFANG_TEST_NONEXISTENT_VAR_DINGTALK_STREAM_ROBOT_CODE".to_string(),
+            ..Default::default()
+        });
+        config.channels.gotify = Some(GotifyConfig {
+            app_token_env: "OPENFANG_TEST_NONEXISTENT_VAR_GOTIFY_APP".to_string(),
+            client_token_env: "OPENFANG_TEST_NONEXISTENT_VAR_GOTIFY_CLIENT".to_string(),
+            ..Default::default()
+        });
+
+        let warnings = config.validate();
+
+        assert_eq!(warnings.len(), 9);
+        assert!(warnings.iter().any(|warning| warning.contains("LINE configured but OPENFANG_TEST_NONEXISTENT_VAR_LINE_SECRET is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("LINE configured but OPENFANG_TEST_NONEXISTENT_VAR_LINE_ACCESS is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("DingTalk configured but OPENFANG_TEST_NONEXISTENT_VAR_DINGTALK_ACCESS is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("DingTalk configured but OPENFANG_TEST_NONEXISTENT_VAR_DINGTALK_SECRET is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("DingTalk Stream configured but OPENFANG_TEST_NONEXISTENT_VAR_DINGTALK_STREAM_APP_KEY is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("DingTalk Stream configured but OPENFANG_TEST_NONEXISTENT_VAR_DINGTALK_STREAM_APP_SECRET is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("DingTalk Stream configured but OPENFANG_TEST_NONEXISTENT_VAR_DINGTALK_STREAM_ROBOT_CODE is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("Gotify configured but OPENFANG_TEST_NONEXISTENT_VAR_GOTIFY_APP is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("Gotify configured but OPENFANG_TEST_NONEXISTENT_VAR_GOTIFY_CLIENT is not set")));
     }
 
     #[test]
