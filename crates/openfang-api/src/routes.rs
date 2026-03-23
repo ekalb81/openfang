@@ -5433,7 +5433,7 @@ pub async fn clawhub_search(
                 .results
                 .iter()
                 .map(|e| {
-                    let installed = skills_dir.join(&e.slug).exists();
+                    let installed = client.is_installed(&e.slug, &skills_dir);
                     serde_json::json!({
                         "slug": e.slug,
                         "name": e.display_name,
@@ -5514,7 +5514,7 @@ pub async fn clawhub_browse(
                 .iter()
                 .map(|entry| {
                     let mut json = clawhub_browse_entry_to_json(entry);
-                    let installed = skills_dir.join(&entry.slug).exists();
+                    let installed = client.is_installed(&entry.slug, &skills_dir);
                     json["installed"] = serde_json::json!(installed);
                     json
                 })
