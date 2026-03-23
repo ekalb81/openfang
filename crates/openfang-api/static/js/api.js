@@ -155,6 +155,14 @@ var OpenFangAPI = (function() {
 
   function onConnectionChange(fn) { _connectionListeners.push(fn); }
 
+  function clearStoredApiKey() {
+    try {
+      localStorage.removeItem('openfang-api-key');
+    } catch (e) {
+      // Storage can be unavailable in privacy-restricted browsers.
+    }
+  }
+
   function request(method, path, body) {
     var opts = { method: method, headers: headers() };
     if (body !== undefined) opts.body = JSON.stringify(body);
@@ -167,7 +175,7 @@ var OpenFangAPI = (function() {
             var store = Alpine.store('app');
             if (store && !store.showAuthPrompt) {
               _authToken = '';
-              localStorage.removeItem('openfang-api-key');
+              clearStoredApiKey();
               store.showAuthPrompt = true;
             }
           } catch(e2) { /* ignore Alpine errors */ }
