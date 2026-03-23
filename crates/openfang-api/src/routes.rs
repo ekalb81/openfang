@@ -848,7 +848,32 @@ pub async fn create_workflow(
         created_at: chrono::Utc::now(),
     };
 
-    let id = state.kernel.register_workflow(workflow).await;
+    let id = state.kernel.register_workflow(workflow.clone()).await;
+
+    // Persist workflow definitions so they survive daemon restarts and can be
+    // auto-loaded from disk on boot like the rest of the workflow subsystem.
+    let wf_dir = state
+        .kernel
+        .config
+        .workflows_dir
+        .clone()
+        .unwrap_or_else(|| state.kernel.config.home_dir.join("workflows"));
+    if let Err(e) = std::fs::create_dir_all(&wf_dir) {
+        tracing::warn!(path = ?wf_dir, error = %e, "Failed to create workflows directory");
+    } else {
+        let wf_path = wf_dir.join(format!("{}.json", id));
+        match serde_json::to_string_pretty(&workflow) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(&wf_path, json) {
+                    tracing::warn!(path = ?wf_path, workflow_id = %id, error = %e, "Failed to persist workflow definition");
+                }
+            }
+            Err(e) => {
+                tracing::warn!(workflow_id = %id, error = %e, "Failed to serialize workflow definition");
+            }
+        }
+    }
+
     (
         StatusCode::CREATED,
         Json(serde_json::json!({"workflow_id": id.to_string()})),
