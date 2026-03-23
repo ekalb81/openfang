@@ -10,6 +10,7 @@ API_REFERENCE_DOC = REPO_ROOT / "docs/api-reference.md"
 CONFIGURATION_DOC = REPO_ROOT / "docs/configuration.md"
 ARCHITECTURE_DOC = REPO_ROOT / "docs/architecture.md"
 PRODUCTION_CHECKLIST_DOC = REPO_ROOT / "docs/production-checklist.md"
+GETTING_STARTED_DOC = REPO_ROOT / "docs/getting-started.md"
 
 
 def readme_metric(name: str) -> int:
@@ -81,6 +82,10 @@ class DocsCatalogCountTests(unittest.TestCase):
         self.assertEqual(
             expected,
             first_count(r"Key features:\s+(\d+)\s+channels", PRODUCTION_CHECKLIST_DOC, "production checklist channel count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"Connect any of\s+(\d+)\s+messaging platforms", GETTING_STARTED_DOC, "getting started channel count"),
         )
 
     def test_readme_provider_count_matches_provider_guide(self):
