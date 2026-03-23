@@ -127,6 +127,13 @@ impl CredentialResolver {
         }
     }
 
+    /// Clear a credential from the in-memory dotenv cache.
+    /// Call this when a key is deleted via the dashboard so the resolver
+    /// doesn't return a stale value from the boot-time snapshot.
+    pub fn clear_dotenv_cache(&mut self, key: &str) {
+        self.dotenv.remove(key);
+    }
+
     /// Remove a credential from the vault (if available).
     pub fn remove_from_vault(&mut self, key: &str) -> ExtensionResult<bool> {
         if let Some(ref mut vault) = self.vault {
@@ -313,5 +320,22 @@ SINGLE_QUOTED='single'
 
         std::env::remove_var("TEST_MULTI_A");
         std::env::remove_var("TEST_MULTI_B");
+    }
+
+    #[test]
+    fn clear_dotenv_cache_removes_stale_boot_snapshot_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let env_path = dir.path().join(".env");
+        std::fs::write(&env_path, "TEST_CLEAR_DOTENV_CACHE=from_dotenv\n").unwrap();
+
+        let mut resolver = CredentialResolver::new(None, Some(&env_path));
+        assert_eq!(
+            resolver.resolve("TEST_CLEAR_DOTENV_CACHE").unwrap().as_str(),
+            "from_dotenv"
+        );
+
+        resolver.clear_dotenv_cache("TEST_CLEAR_DOTENV_CACHE");
+        assert!(resolver.resolve("TEST_CLEAR_DOTENV_CACHE").is_none());
+        assert!(!resolver.has_credential("TEST_CLEAR_DOTENV_CACHE"));
     }
 }
