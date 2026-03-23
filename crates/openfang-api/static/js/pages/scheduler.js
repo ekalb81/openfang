@@ -103,6 +103,10 @@ function schedulerPage() {
     async loadHistory() {
       this.historyLoading = true;
       try {
+        if (!this.triggers.length && !this.trigLoading && !this.trigLoadError) {
+          await this.loadTriggers();
+        }
+
         var historyItems = [];
         var jobs = this.jobs || [];
         for (var i = 0; i < jobs.length; i++) {
