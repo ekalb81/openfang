@@ -3072,6 +3072,15 @@ impl KernelConfig {
                     wa.access_token_env
                 ));
             }
+            if std::env::var(&wa.verify_token_env)
+                .unwrap_or_default()
+                .is_empty()
+            {
+                warnings.push(format!(
+                    "WhatsApp configured but {} is not set",
+                    wa.verify_token_env
+                ));
+            }
         }
         if let Some(ref mx) = self.channels.matrix {
             if std::env::var(&mx.access_token_env)
@@ -3190,6 +3199,15 @@ impl KernelConfig {
                     ms.page_token_env
                 ));
             }
+            if std::env::var(&ms.verify_token_env)
+                .unwrap_or_default()
+                .is_empty()
+            {
+                warnings.push(format!(
+                    "Messenger configured but {} is not set",
+                    ms.verify_token_env
+                ));
+            }
         }
         if let Some(ref rd) = self.channels.reddit {
             if std::env::var(&rd.client_secret_env)
@@ -3199,6 +3217,15 @@ impl KernelConfig {
                 warnings.push(format!(
                     "Reddit configured but {} is not set",
                     rd.client_secret_env
+                ));
+            }
+            if std::env::var(&rd.password_env)
+                .unwrap_or_default()
+                .is_empty()
+            {
+                warnings.push(format!(
+                    "Reddit configured but {} is not set",
+                    rd.password_env
                 ));
             }
         }
@@ -3642,6 +3669,36 @@ mod tests {
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("WeCom"));
         assert!(warnings[0].contains("OPENFANG_TEST_NONEXISTENT_VAR_WECOM"));
+    }
+
+    #[test]
+    fn test_validate_missing_webhook_and_reddit_channel_envs() {
+        let mut config = KernelConfig::default();
+        config.channels.whatsapp = Some(WhatsAppConfig {
+            access_token_env: "OPENFANG_TEST_NONEXISTENT_VAR_WA_ACCESS".to_string(),
+            verify_token_env: "OPENFANG_TEST_NONEXISTENT_VAR_WA_VERIFY".to_string(),
+            ..Default::default()
+        });
+        config.channels.messenger = Some(MessengerConfig {
+            page_token_env: "OPENFANG_TEST_NONEXISTENT_VAR_MESSENGER_PAGE".to_string(),
+            verify_token_env: "OPENFANG_TEST_NONEXISTENT_VAR_MESSENGER_VERIFY".to_string(),
+            ..Default::default()
+        });
+        config.channels.reddit = Some(RedditConfig {
+            client_secret_env: "OPENFANG_TEST_NONEXISTENT_VAR_REDDIT_SECRET".to_string(),
+            password_env: "OPENFANG_TEST_NONEXISTENT_VAR_REDDIT_PASSWORD".to_string(),
+            ..Default::default()
+        });
+
+        let warnings = config.validate();
+
+        assert_eq!(warnings.len(), 6);
+        assert!(warnings.iter().any(|warning| warning.contains("WhatsApp configured but OPENFANG_TEST_NONEXISTENT_VAR_WA_ACCESS is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("WhatsApp configured but OPENFANG_TEST_NONEXISTENT_VAR_WA_VERIFY is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("Messenger configured but OPENFANG_TEST_NONEXISTENT_VAR_MESSENGER_PAGE is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("Messenger configured but OPENFANG_TEST_NONEXISTENT_VAR_MESSENGER_VERIFY is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("Reddit configured but OPENFANG_TEST_NONEXISTENT_VAR_REDDIT_SECRET is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("Reddit configured but OPENFANG_TEST_NONEXISTENT_VAR_REDDIT_PASSWORD is not set")));
     }
 
     #[test]
