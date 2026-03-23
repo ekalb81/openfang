@@ -13,6 +13,7 @@ PRODUCTION_CHECKLIST_DOC = REPO_ROOT / "docs/production-checklist.md"
 GETTING_STARTED_DOC = REPO_ROOT / "docs/getting-started.md"
 CLI_REFERENCE_DOC = REPO_ROOT / "docs/cli-reference.md"
 CLI_MAIN_RS = REPO_ROOT / "crates/openfang-cli/src/main.rs"
+WS_RS = REPO_ROOT / "crates/openfang-api/src/ws.rs"
 MODEL_CATALOG_RS = REPO_ROOT / "crates/openfang-runtime/src/model_catalog.rs"
 
 
@@ -206,6 +207,10 @@ class DocsCatalogCountTests(unittest.TestCase):
         expected = live_alias_count()
         self.assertEqual(
             expected,
+            first_count(r"\|\s*\[LLM Providers\]\(providers\.md\)\s*\|\s*\d+\s+providers,\s*\d+\s+models,\s*(\d+)\s+aliases", README_DOC, "README providers summary alias count"),
+        )
+        self.assertEqual(
+            expected,
             first_count(r"\*\*(\d+) aliases\*\*", PROVIDERS_DOC, "providers guide intro alias count"),
         )
         self.assertEqual(
@@ -220,6 +225,11 @@ class DocsCatalogCountTests(unittest.TestCase):
             expected,
             first_count(r"\*\*(\d+) aliases\*\* for convenience", ARCHITECTURE_DOC, "architecture registry alias count"),
         )
+
+    def test_streaming_error_classifier_comment_avoids_stale_provider_count(self):
+        text = WS_RS.read_text(encoding="utf-8")
+        self.assertIn("comprehensive built-in provider coverage", text)
+        self.assertNotIn("20-provider coverage", text)
 
 
 if __name__ == "__main__":

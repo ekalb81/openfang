@@ -1142,7 +1142,7 @@ fn sanitize_text(s: &str) -> String {
 /// Classify a streaming/setup error into a user-friendly message.
 ///
 /// Uses the proper LLM error classifier from `openfang_runtime::llm_errors`
-/// for comprehensive 20-provider coverage with actionable advice.
+/// for comprehensive built-in provider coverage with actionable advice.
 fn classify_streaming_error(err: &openfang_kernel::error::KernelError) -> String {
     let inner = format!("{err}");
 
