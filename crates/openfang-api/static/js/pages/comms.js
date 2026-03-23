@@ -8,6 +8,8 @@ function commsPage() {
     loading: true,
     loadError: '',
     sseSource: null,
+    streamConnected: false,
+    streamError: '',
     showSendModal: false,
     showTaskModal: false,
     sendFrom: '',
@@ -22,6 +24,7 @@ function commsPage() {
     async loadData() {
       this.loading = true;
       this.loadError = '';
+      this.streamError = '';
       try {
         var results = await Promise.all([
           OpenFangAPI.get('/api/comms/topology'),
@@ -29,19 +32,32 @@ function commsPage() {
         ]);
         this.topology = results[0] || { nodes: [], edges: [] };
         this.events = results[1] || [];
-        this.startSSE();
       } catch(e) {
         this.loadError = e.message || 'Could not load comms data.';
+        this.loading = false;
+        return;
+      }
+
+      try {
+        this.startSSE();
+      } catch(e) {
+        this.streamConnected = false;
+        this.streamError = e.message || 'Live updates unavailable; showing the last loaded snapshot.';
       }
       this.loading = false;
     },
 
     startSSE() {
       if (this.sseSource) this.sseSource.close();
+      this.streamConnected = false;
       var self = this;
       var url = OpenFangAPI.baseUrl + '/api/comms/events/stream';
       if (OpenFangAPI.apiKey) url += '?token=' + encodeURIComponent(OpenFangAPI.apiKey);
       this.sseSource = new EventSource(url);
+      this.sseSource.onopen = function() {
+        self.streamConnected = true;
+        self.streamError = '';
+      };
       this.sseSource.onmessage = function(ev) {
         if (ev.data === 'ping') return;
         try {
@@ -54,6 +70,12 @@ function commsPage() {
           }
         } catch(e) { /* ignore parse errors */ }
       };
+      this.sseSource.onerror = function() {
+        self.streamConnected = false;
+        if (!self.streamError) {
+          self.streamError = 'Live updates disconnected; showing the last loaded snapshot.';
+        }
+      };
     },
 
     stopSSE() {
@@ -61,6 +83,8 @@ function commsPage() {
         this.sseSource.close();
         this.sseSource = null;
       }
+      this.streamConnected = false;
+      this.streamError = '';
     },
 
     async refreshTopology() {
