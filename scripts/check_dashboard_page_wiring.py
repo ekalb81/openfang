@@ -2,8 +2,10 @@
 """Guard dashboard page wiring invariants in static/index_body.html.
 
 This catches two lightweight but high-churn regression families:
-1. Plain page factories from static/js/pages/*.js must be invoked as x-data="...Page()".
-2. Pages that expose route-leave cleanup hooks must wire the matching @page-leave.window="...()" handler on their route root.
+1. Route page components from static/js/pages/*.js (plain factories or Alpine.data registrations)
+   must be mounted by a matching x-data binding in static/index_body.html.
+2. Pages that expose route-leave cleanup hooks must wire the matching
+   @page-leave.window="...()" handler on their route root.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ PAGES_DIR = REPO_ROOT / "crates/openfang-api/static/js/pages"
 INDEX_BODY = REPO_ROOT / "crates/openfang-api/static/index_body.html"
 
 FACTORY_RE = re.compile(r"function\s+([A-Za-z0-9_]+Page)\s*\(")
+ALPINE_DATA_RE = re.compile(r"Alpine\.data\(\s*['\"]([A-Za-z0-9_]+Page)['\"]")
 ROUTE_LEAVE_HOOKS = {
     "destroy": re.compile(r"\bdestroy\s*(?:\(|:)"),
     "stopSSE": re.compile(r"\bstopSSE\s*(?:\(|:)"),
@@ -42,15 +45,22 @@ def main() -> int:
     for page_file in sorted(PAGES_DIR.glob("*.js")):
         js = page_file.read_text(encoding="utf-8")
         factory_match = FACTORY_RE.search(js)
-        if not factory_match:
+        alpine_data_match = ALPINE_DATA_RE.search(js)
+        if not factory_match and not alpine_data_match:
             continue
 
-        factory_name = factory_match.group(1)
-        expected_xdata = f"{factory_name}()"
-        matching_tags = [tag for tag in route_tags if tag[0] == expected_xdata]
+        if factory_match:
+            component_name = factory_match.group(1)
+            expected_xdata_values = [f"{component_name}()"]
+        else:
+            component_name = alpine_data_match.group(1)
+            expected_xdata_values = [component_name, f"{component_name}()"]
+
+        matching_tags = [tag for tag in route_tags if tag[0] in expected_xdata_values]
         if not matching_tags:
+            expected_display = " or ".join(f'x-data="{value}"' for value in expected_xdata_values)
             errors.append(
-                f"{page_file.relative_to(REPO_ROOT)}: missing x-data=\"{expected_xdata}\" route binding in {INDEX_BODY.relative_to(REPO_ROOT)}"
+                f"{page_file.relative_to(REPO_ROOT)}: missing {expected_display} route binding in {INDEX_BODY.relative_to(REPO_ROOT)}"
             )
             continue
 
@@ -58,8 +68,9 @@ def main() -> int:
             if hook_re.search(js):
                 page_leave_re = page_leave_hook_re(hook_name)
                 if not any(page_leave_re.search(attrs) for _, attrs, _ in matching_tags):
+                    expected_display = " or ".join(f'x-data="{value}"' for value in expected_xdata_values)
                     errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}: defines {hook_name}() but no matching x-data=\"{expected_xdata}\" tag wires @page-leave.window=\"{hook_name}()\""
+                        f"{page_file.relative_to(REPO_ROOT)}: defines {hook_name}() but no matching {expected_display} tag wires @page-leave.window=\"{hook_name}()\""
                     )
 
     if errors:
