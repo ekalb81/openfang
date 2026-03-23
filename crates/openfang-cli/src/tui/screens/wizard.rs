@@ -163,7 +163,12 @@ pub fn needs_setup() -> bool {
             None => return true,
         }
     };
-    !of_home.join("config.toml").exists()
+
+    let config_path = of_home.join("config.toml");
+    match std::fs::metadata(&config_path) {
+        Ok(metadata) => !metadata.is_file(),
+        Err(_) => true,
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
