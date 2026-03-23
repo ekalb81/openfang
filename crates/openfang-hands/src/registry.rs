@@ -486,6 +486,12 @@ fn run_returns_python3(cmd: &str) -> bool {
     }
 }
 
+fn path_points_to_file(path: &std::path::Path) -> bool {
+    std::fs::metadata(path)
+        .map(|metadata| metadata.is_file())
+        .unwrap_or(false)
+}
+
 /// Check if Chromium (or Chrome) is available anywhere on the system.
 ///
 /// Checks in order:
@@ -497,7 +503,7 @@ fn check_chromium_available() -> bool {
     // 1. Env vars
     for var in &["CHROME_PATH", "CHROMIUM_PATH"] {
         if let Ok(p) = std::env::var(var) {
-            if !p.is_empty() && std::path::Path::new(&p).exists() {
+            if !p.is_empty() && path_points_to_file(std::path::Path::new(&p)) {
                 return true;
             }
         }
@@ -548,7 +554,7 @@ fn check_chromium_available() -> bool {
         ]
     };
     for p in &known_paths {
-        if p.exists() {
+        if path_points_to_file(p) {
             return true;
         }
     }
@@ -771,6 +777,19 @@ mod tests {
             which_binary("echo") || which_binary("cmd") || which_binary("sh") || which_binary("ls");
         // This test is best-effort — in CI containers some might not exist
         let _ = has_something;
+    }
+
+    #[test]
+    fn path_points_to_file_rejects_directory_placeholders() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("chrome");
+        let dir_path = dir.path().join("chrome-dir");
+        std::fs::create_dir_all(&dir_path).unwrap();
+        std::fs::write(&file_path, "#!/bin/sh\n").unwrap();
+
+        assert!(path_points_to_file(&file_path));
+        assert!(!path_points_to_file(&dir_path));
+        assert!(!path_points_to_file(&dir.path().join("missing")));
     }
 
     #[test]
