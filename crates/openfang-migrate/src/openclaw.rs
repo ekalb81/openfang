@@ -2545,7 +2545,7 @@ fn report_skipped_features(root: &OpenClawRoot, source: &Path, report: &mut Migr
     }
 
     // Cron state file
-    if source.join("cron").join("cron-store.json").exists() {
+    if is_regular_file(&source.join("cron").join("cron-store.json")) {
         report.skipped.push(SkippedItem {
             kind: ItemKind::Config,
             name: "cron-store.json".to_string(),
@@ -2554,7 +2554,7 @@ fn report_skipped_features(root: &OpenClawRoot, source: &Path, report: &mut Migr
     }
 
     // Vector index
-    if source.join("memory-search").join("index.db").exists() {
+    if is_regular_file(&source.join("memory-search").join("index.db")) {
         report.skipped.push(SkippedItem {
             kind: ItemKind::Memory,
             name: "memory-search/index.db".to_string(),
@@ -2564,7 +2564,7 @@ fn report_skipped_features(root: &OpenClawRoot, source: &Path, report: &mut Migr
     }
 
     // Auth profiles file
-    if source.join("auth-profiles.json").exists() {
+    if is_regular_file(&source.join("auth-profiles.json")) {
         report.skipped.push(SkippedItem {
             kind: ItemKind::Config,
             name: "auth-profiles.json".to_string(),
@@ -4097,6 +4097,45 @@ mod tests {
             .any(|s| s.name == "auth-profiles.json"));
         assert!(report.skipped.iter().any(|s| s.name == "session"));
         assert!(report.skipped.iter().any(|s| s.name == "memory"));
+    }
+
+    #[test]
+    fn test_json5_skipped_physical_markers_ignore_directory_lookalikes() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+
+        let json5_content = r#"{
+  cron: { enabled: true },
+  auth: { profiles: { "default": {} } },
+  memory: { backend: "builtin" }
+}"#;
+        std::fs::write(source.path().join("openclaw.json"), json5_content).unwrap();
+
+        std::fs::create_dir_all(source.path().join("cron").join("cron-store.json")).unwrap();
+        std::fs::create_dir_all(source.path().join("memory-search").join("index.db")).unwrap();
+        std::fs::create_dir_all(source.path().join("auth-profiles.json")).unwrap();
+
+        let options = MigrateOptions {
+            source: crate::MigrateSource::OpenClaw,
+            source_dir: source.path().to_path_buf(),
+            target_dir: target.path().to_path_buf(),
+            dry_run: false,
+        };
+
+        let report = migrate(&options).unwrap();
+
+        assert!(report.skipped.iter().any(|s| s.name == "cron"));
+        assert!(report.skipped.iter().any(|s| s.name == "auth-profiles"));
+        assert!(report.skipped.iter().any(|s| s.name == "memory"));
+        assert!(!report.skipped.iter().any(|s| s.name == "cron-store.json"));
+        assert!(!report
+            .skipped
+            .iter()
+            .any(|s| s.name == "memory-search/index.db"));
+        assert!(!report
+            .skipped
+            .iter()
+            .any(|s| s.name == "auth-profiles.json"));
     }
 
     #[test]
