@@ -87,6 +87,10 @@ function commsPage() {
       this.streamError = '';
     },
 
+    destroy() {
+      this.stopSSE();
+    },
+
     async refreshTopology() {
       try {
         this.topology = await OpenFangAPI.get('/api/comms/topology');

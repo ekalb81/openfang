@@ -4452,7 +4452,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Comms -->
     <template x-if="page === 'comms'">
-      <div x-data="commsPage()" x-init="loadData()" @page-leave.window="stopSSE()">
+      <div x-data="commsPage()" x-init="loadData()" @page-leave.window="destroy()">
         <div class="page-header">
           <h2>Agent Comms</h2>
           <div class="flex items-center gap-2">

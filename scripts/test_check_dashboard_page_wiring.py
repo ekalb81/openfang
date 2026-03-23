@@ -182,6 +182,52 @@ class DashboardPageWiringTests(unittest.TestCase):
         self.assertIsNotNone(hook_re.search('@page-leave.window="destroy()"'))
         self.assertIsNone(hook_re.search('@page-leave.window="stopSSE()"'))
 
+    def test_route_leave_fallbacks_allow_destroy_for_stream_cleanup(self):
+        self.assertEqual(module.ROUTE_LEAVE_FALLBACKS['stopSSE'], ('destroy',))
+        self.assertEqual(module.ROUTE_LEAVE_FALLBACKS['stopAutoRefresh'], ('destroy',))
+
+    def test_main_allows_destroy_hook_to_cover_stop_sse_cleanup(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pages_dir = root / 'crates/openfang-api/static/js/pages'
+            pages_dir.mkdir(parents=True)
+            (pages_dir / 'comms.js').write_text(
+                """
+                function commsPage() {
+                    return {
+                        loading: false,
+                        loadError: '',
+                        stopSSE() {},
+                        destroy() { this.stopSSE(); },
+                        loadData() {},
+                    };
+                }
+                """,
+                encoding='utf-8',
+            )
+            (root / 'crates/openfang-api/static/index_body.html').write_text(
+                """
+                <template x-if=\"page === 'comms'\">
+                  <section x-data=\"commsPage()\" x-init=\"loadData()\" @page-leave.window=\"destroy()\"></section>
+                </template>
+                """,
+                encoding='utf-8',
+            )
+
+            old_repo_root = module.REPO_ROOT
+            old_pages_dir = module.PAGES_DIR
+            old_index_body = module.INDEX_BODY
+            try:
+                module.REPO_ROOT = root
+                module.PAGES_DIR = pages_dir
+                module.INDEX_BODY = root / 'crates/openfang-api/static/index_body.html'
+                self.assertEqual(module.main(), 0)
+            finally:
+                module.REPO_ROOT = old_repo_root
+                module.PAGES_DIR = old_pages_dir
+                module.INDEX_BODY = old_index_body
+
     def test_main_flags_route_scoped_xinit_typo_outside_nested_xdata(self):
         # Use a TemporaryDirectory so the checker reads a minimal synthetic repo.
         import tempfile

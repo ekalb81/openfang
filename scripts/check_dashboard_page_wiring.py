@@ -28,6 +28,10 @@ ROUTE_LEAVE_HOOKS = {
     "stopSSE": re.compile(r"\bstopSSE\s*(?:\(|:)"),
     "stopAutoRefresh": re.compile(r"\bstopAutoRefresh\s*(?:\(|:)"),
 }
+ROUTE_LEAVE_FALLBACKS = {
+    "stopSSE": ("destroy",),
+    "stopAutoRefresh": ("destroy",),
+}
 XDATA_RE = re.compile(r'x-data\s*=\s*"([^"]+)"')
 XINIT_RE = re.compile(r'x-init\s*=\s*"([^"]+)"')
 METHOD_DEF_RE = re.compile(
@@ -264,10 +268,17 @@ def main() -> int:
 
         for hook_name, hook_re in ROUTE_LEAVE_HOOKS.items():
             if hook_re.search(js):
-                page_leave_re = page_leave_hook_re(hook_name)
-                if not any(page_leave_re.search(attrs) for _, attrs, _ in matching_tags):
+                acceptable_hooks = (hook_name,) + ROUTE_LEAVE_FALLBACKS.get(hook_name, ())
+                if not any(
+                    page_leave_hook_re(acceptable_hook).search(attrs)
+                    for acceptable_hook in acceptable_hooks
+                    for _, attrs, _ in matching_tags
+                ):
+                    expected_hooks = " or ".join(
+                        f'@page-leave.window="{acceptable_hook}()"' for acceptable_hook in acceptable_hooks
+                    )
                     errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}: defines {hook_name}() but no matching {expected_display} tag wires @page-leave.window=\"{hook_name}()\""
+                        f"{page_file.relative_to(REPO_ROOT)}: defines {hook_name}() but no matching {expected_display} tag wires {expected_hooks}"
                     )
 
     if errors:
