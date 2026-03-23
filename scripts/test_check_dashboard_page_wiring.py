@@ -44,6 +44,10 @@ class DashboardPageWiringTests(unittest.TestCase):
         expr = 'if (loadError) refreshRuntime(); bootstrapOverview()'
         self.assertEqual(module.direct_method_calls(expr), ['refreshRuntime', 'bootstrapOverview'])
 
+    def test_direct_method_calls_ignores_string_literal_and_builtin_calls(self):
+        expr = "style = 'transform: translateY(var(--drag-offset))'; resize(Number($event.target.value)); save()"
+        self.assertEqual(module.direct_method_calls(expr), ['resize', 'save'])
+
     def test_undefined_method_calls_ignores_property_calls_and_reports_missing_methods(self):
         expr = 'loadOverview().then(() => startAutoRefresh()); missingMethod()'
         self.assertEqual(
@@ -101,6 +105,10 @@ class DashboardPageWiringTests(unittest.TestCase):
     def test_route_expr_re_ignores_event_handlers(self):
         line = '<button @click="refreshRuntime()" :disabled="runtimeLoading">Refresh</button>'
         self.assertEqual(module.ROUTE_EXPR_RE.findall(line), ['runtimeLoading'])
+
+    def test_event_attr_re_captures_route_handlers(self):
+        line = '<button @click="refreshRuntime()" @keydown.escape.window="closeModal()">Refresh</button>'
+        self.assertEqual(module.EVENT_ATTR_RE.findall(line), ['refreshRuntime()', 'closeModal()'])
 
     def test_collect_route_lines_groups_nested_template_body(self):
         index_lines = [
@@ -184,6 +192,53 @@ class DashboardPageWiringTests(unittest.TestCase):
                     <div class="page-body" x-init="loadSessons()"></div>
                     <div x-data="childWidget()" x-init="init()"></div>
                   </div>
+                </template>
+                """,
+                encoding='utf-8',
+            )
+
+            old_repo_root = module.REPO_ROOT
+            old_pages_dir = module.PAGES_DIR
+            old_index_body = module.INDEX_BODY
+            try:
+                module.REPO_ROOT = root
+                module.PAGES_DIR = pages_dir
+                module.INDEX_BODY = root / 'crates/openfang-api/static/index_body.html'
+                self.assertEqual(module.main(), 1)
+            finally:
+                module.REPO_ROOT = old_repo_root
+                module.PAGES_DIR = old_pages_dir
+                module.INDEX_BODY = old_index_body
+
+    def test_main_flags_route_scoped_event_handler_typos_outside_nested_xdata(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pages_dir = root / 'crates/openfang-api/static/js/pages'
+            pages_dir.mkdir(parents=True)
+            (pages_dir / 'runtime.js').write_text(
+                """
+                function runtimePage() {
+                    return {
+                        loading: false,
+                        loadError: '',
+                        refreshRuntime() {},
+                        closeModal() {},
+                    };
+                }
+                """,
+                encoding='utf-8',
+            )
+            (root / 'crates/openfang-api/static/index_body.html').write_text(
+                """
+                <template x-if="page === 'runtime'">
+                  <section x-data="runtimePage()">
+                    <button @click="refreshRuntme()">Refresh</button>
+                    <div @keydown.escape.window="closeModal()"></div>
+                    <div x-data="childWidget()">
+                      <button @click="missingChildMethod()">Child action</button>
+                    </div>
+                  </section>
                 </template>
                 """,
                 encoding='utf-8',

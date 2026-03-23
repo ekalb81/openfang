@@ -4,11 +4,11 @@
 This catches four lightweight but high-churn regression families:
 1. Route page components from static/js/pages/*.js (plain factories or Alpine.data registrations)
    must be mounted by a matching x-data binding in static/index_body.html.
-2. Route-root x-init handlers must only call methods that the page component actually defines.
+2. Route-root and route-scoped event/init handlers must only call methods that the page
+   component actually defines.
 3. Route-scoped state bindings (x-show/x-if/x-text/:disabled/etc.) must only reference
    Loading/Error members that the page component actually defines.
-4. Pages that expose route-leave cleanup hooks and route-scoped Retry/Refresh buttons
-   must wire only methods that the page component actually defines.
+4. Pages that expose route-leave cleanup hooks must wire those hooks on the matching route root.
 """
 
 from __future__ import annotations
@@ -38,6 +38,9 @@ GETTER_DEF_RE = re.compile(r'^\s*get\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(', re.MULTIL
 STATE_DEF_RE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?!\s*(?:async\s+)?function\b)', re.MULTILINE)
 METHOD_CALL_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*)\s*\(')
 BUTTON_CLICK_RE = re.compile(r'<button\b[^>]*@click\s*=\s*"([^"]+)"[^>]*>(.*?)</button>', re.DOTALL)
+EVENT_ATTR_RE = re.compile(r'@[A-Za-z0-9_.:-]+\s*=\s*"([^"]+)"')
+STRING_LITERAL_RE = re.compile(r"('(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\")")
+IGNORED_CALLEES = {"if", "Number", "String", "Boolean", "Object", "Array", "Date", "Math", "JSON", "parseInt", "parseFloat", "encodeURIComponent", "decodeURIComponent"}
 ROUTE_TEMPLATE_RE = re.compile(r'<template\b[^>]*x-if\s*=\s*"page === \'([^\']+)\'"')
 ROUTE_EXPR_RE = re.compile(r'(?:x-(?:show|if|text)|(?:x-bind:|:)[A-Za-z0-9_.:-]+)\s*=\s*"([^"]+)"')
 XMODEL_RE = re.compile(r'x-model\s*=\s*"([^"]+)"')
@@ -61,7 +64,8 @@ def defined_methods_in(js: str) -> set[str]:
 
 
 def direct_method_calls(expr: str) -> list[str]:
-    return [method for method in METHOD_CALL_RE.findall(expr) if method not in {"if"}]
+    scrubbed = STRING_LITERAL_RE.sub("", expr)
+    return [method for method in METHOD_CALL_RE.findall(scrubbed) if method not in IGNORED_CALLEES]
 
 
 def undefined_method_calls(expr: str, defined_methods: set[str]) -> list[str]:
@@ -192,8 +196,6 @@ def main() -> int:
 
         route_name = page_file.stem
         route_line_entries = route_lines.get(route_name, [])
-        route_html = "\n".join(line for _, line in route_line_entries)
-        route_base_line = route_line_entries[0][0] if route_line_entries else 1
         route_root_lines = {line_number for _, _, line_number in matching_tags}
         nested_xdata_depth = 0
 
@@ -212,6 +214,12 @@ def main() -> int:
                 for method_name in undefined_method_calls(xinit.group(1), defined_methods):
                     errors.append(
                         f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-init references {method_name}() but {component_name} does not define it"
+                    )
+
+            for event_match in EVENT_ATTR_RE.finditer(line):
+                for method_name in undefined_method_calls(event_match.group(1), defined_methods):
+                    errors.append(
+                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route event handler references {method_name}() but {component_name} does not define it"
                     )
 
             for expr_match in ROUTE_EXPR_RE.finditer(line):
@@ -235,19 +243,6 @@ def main() -> int:
                 if root and root not in defined_members:
                     errors.append(
                         f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-for references {root} but {component_name} does not define it"
-                    )
-
-        for match in BUTTON_CLICK_RE.finditer(route_html):
-            expr, label_html = match.groups()
-            if not is_retry_or_refresh_label(label_html):
-                continue
-
-            label = normalize_button_label(label_html)
-            line_number = route_base_line + route_html[: match.start()].count("\n")
-            for method_name in direct_method_calls(expr):
-                if method_name not in defined_methods:
-                    errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: {label} button references {method_name}() but {component_name} does not define it"
                     )
 
         for hook_name, hook_re in ROUTE_LEAVE_HOOKS.items():
