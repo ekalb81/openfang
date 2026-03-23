@@ -4855,7 +4855,7 @@ fn cmd_config_delete_key(provider: &str) {
     {
         let home = openfang_home();
         let vault_path = home.join("vault.enc");
-        if vault_path.exists() {
+        if vault_path.is_file() {
             let mut vault = openfang_extensions::vault::CredentialVault::new(vault_path);
             if vault.unlock().is_ok() {
                 let _ = vault.remove(&env_var);
@@ -4900,7 +4900,7 @@ fn save_credential_prefer_vault(env_var: &str, value: &str) {
 
     let home = openfang_home();
     let vault_path = home.join("vault.enc");
-    if !vault_path.exists() {
+    if !vault_path.is_file() {
         return;
     }
     let mut vault = openfang_extensions::vault::CredentialVault::new(vault_path);
@@ -4985,7 +4985,7 @@ fn cmd_integration_add(name: &str, key: Option<&str>) {
     // Set up credential resolver
     let dotenv_path = home.join(".env");
     let vault_path = home.join("vault.enc");
-    let vault = if vault_path.exists() {
+    let vault = if vault_path.is_file() {
         let mut v = openfang_extensions::vault::CredentialVault::new(vault_path);
         if v.unlock().is_ok() {
             Some(v)

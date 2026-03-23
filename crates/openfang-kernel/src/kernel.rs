@@ -569,7 +569,7 @@ impl OpenFangKernel {
         // Initialize credential resolver (vault → dotenv → env var)
         let credential_resolver = {
             let vault_path = config.home_dir.join("vault.enc");
-            let vault = if vault_path.exists() {
+            let vault = if vault_path.is_file() {
                 let mut v = openfang_extensions::vault::CredentialVault::new(vault_path);
                 match v.unlock() {
                     Ok(()) => {

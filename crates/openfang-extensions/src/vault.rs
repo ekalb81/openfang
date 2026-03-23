@@ -134,7 +134,7 @@ impl CredentialVault {
         if self.unlocked {
             return Ok(());
         }
-        if !self.path.exists() {
+        if !self.path.is_file() {
             return Err(ExtensionError::Vault(
                 "Vault not initialized. Run `openfang vault init`.".to_string(),
             ));
@@ -183,7 +183,7 @@ impl CredentialVault {
 
     /// Check if the vault file exists.
     pub fn exists(&self) -> bool {
-        self.path.exists()
+        self.path.is_file()
     }
 
     /// Check if the vault is unlocked.
@@ -214,7 +214,7 @@ impl CredentialVault {
         if self.unlocked {
             return Ok(());
         }
-        if !self.path.exists() {
+        if !self.path.is_file() {
             return Err(ExtensionError::Vault(
                 "Vault not initialized. Run `openfang vault init`.".to_string(),
             ));
