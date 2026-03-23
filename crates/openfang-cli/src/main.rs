@@ -3998,10 +3998,12 @@ fn cmd_channel_setup(channel: Option<&str>) {
             };
             let token = prompt_input("  Access token: ");
 
-            let config_block = "\n[channels.matrix]\nhomeserver_env = \"MATRIX_HOMESERVER\"\naccess_token_env = \"MATRIX_ACCESS_TOKEN\"\ndefault_agent = \"assistant\"\n";
-            maybe_write_channel_config("matrix", config_block);
+            let config_block = format!(
+                "\n[channels.matrix]\nhomeserver_url = {}\naccess_token_env = \"MATRIX_ACCESS_TOKEN\"\nauto_accept_invites = false\ndefault_agent = \"assistant\"\n",
+                toml::Value::String(homeserver.clone())
+            );
+            maybe_write_channel_config("matrix", &config_block);
 
-            let _ = dotenv::save_env_key("MATRIX_HOMESERVER", &homeserver);
             if !token.is_empty() {
                 match dotenv::save_env_key("MATRIX_ACCESS_TOKEN", &token) {
                     Ok(()) => ui::success("Token saved to ~/.openfang/.env"),
