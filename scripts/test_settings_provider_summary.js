@@ -37,7 +37,7 @@ assert.strictEqual(typeof context.settingsPage, 'function', 'settingsPage should
 const page = context.settingsPage();
 assert.strictEqual(
   page.providerSummaryText(),
-  'OpenFang supports 20 LLM providers out of the box. Configure API keys to unlock models from each provider. Set environment variables and restart, or use the form below to save keys directly.',
+  'OpenFang supports 41 LLM providers out of the box. Configure API keys to unlock models from each provider. Set environment variables and restart, or use the form below to save keys directly.',
   'providerSummaryText should default to the documented provider count before providers finish loading'
 );
 

@@ -363,7 +363,7 @@ function settingsPage() {
     },
 
     providerSummaryText() {
-      var providerCount = this.providers.length || 20;
+      var providerCount = this.providers.length || 41;
       return 'OpenFang supports ' + providerCount + ' LLM providers out of the box. Configure API keys to unlock models from each provider. Set environment variables and restart, or use the form below to save keys directly.';
     },
 
