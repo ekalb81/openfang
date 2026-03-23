@@ -34,12 +34,16 @@ METHOD_DEF_RE = re.compile(
     r'^\s*(?:async\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(|^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?:async\s+)?function\s*\(',
     re.MULTILINE,
 )
+GETTER_DEF_RE = re.compile(r'^\s*get\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(', re.MULTILINE)
 STATE_DEF_RE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?!\s*(?:async\s+)?function\b)', re.MULTILINE)
 METHOD_CALL_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*)\s*\(')
 BUTTON_CLICK_RE = re.compile(r'<button\b[^>]*@click\s*=\s*"([^"]+)"[^>]*>(.*?)</button>', re.DOTALL)
 ROUTE_TEMPLATE_RE = re.compile(r'<template\b[^>]*x-if\s*=\s*"page === \'([^\']+)\'"')
 ROUTE_EXPR_RE = re.compile(r'(?:x-(?:show|if|text)|(?:x-bind:|:)[A-Za-z0-9_.:-]+)\s*=\s*"([^"]+)"')
+XMODEL_RE = re.compile(r'x-model\s*=\s*"([^"]+)"')
+XFOR_RE = re.compile(r'x-for\s*=\s*"([^"]+)"')
 STATE_LIKE_IDENTIFIER_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*(?:Loading|Error))\b')
+SIMPLE_MEMBER_EXPR_RE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\b(?:\s*(?:[.[(]|$))')
 HTML_TAG_RE = re.compile(r'<(/?)([A-Za-z0-9:-]+)\b[^>]*?>')
 TAG_RE = re.compile(r'<[^>]+>')
 VOID_HTML_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
@@ -61,7 +65,7 @@ def direct_method_calls(expr: str) -> list[str]:
 
 
 def defined_members_in(js: str) -> set[str]:
-    return defined_methods_in(js) | set(STATE_DEF_RE.findall(js))
+    return defined_methods_in(js) | set(GETTER_DEF_RE.findall(js)) | set(STATE_DEF_RE.findall(js))
 
 
 def undefined_state_like_identifiers(expr: str, defined_members: set[str]) -> set[str]:
@@ -70,6 +74,23 @@ def undefined_state_like_identifiers(expr: str, defined_members: set[str]) -> se
         for identifier in STATE_LIKE_IDENTIFIER_RE.findall(expr)
         if identifier not in defined_members
     }
+
+
+def simple_member_root(expr: str) -> str | None:
+    expr = expr.strip()
+    if not expr or expr[0] in "([{" or "." in expr or "[" in expr or "?" in expr:
+        return None
+    match = SIMPLE_MEMBER_EXPR_RE.match(expr)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def model_member_root(expr: str) -> str | None:
+    match = SIMPLE_MEMBER_EXPR_RE.match(expr.strip())
+    if not match:
+        return None
+    return match.group(1)
 
 
 def collect_route_lines(index_lines: list[str]) -> dict[str, list[tuple[int, str]]]:
@@ -189,6 +210,21 @@ def main() -> int:
                 for identifier in undefined_identifiers:
                     errors.append(
                         f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route expression references {identifier} but {component_name} does not define it"
+                    )
+
+            for model_match in XMODEL_RE.finditer(line):
+                root = model_member_root(model_match.group(1))
+                if root and root not in defined_members:
+                    errors.append(
+                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-model references {root} but {component_name} does not define it"
+                    )
+
+            for for_match in XFOR_RE.finditer(line):
+                _, _, source_expr = for_match.group(1).partition(" in ")
+                root = simple_member_root(source_expr)
+                if root and root not in defined_members:
+                    errors.append(
+                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-for references {root} but {component_name} does not define it"
                     )
 
         for match in BUTTON_CLICK_RE.finditer(route_html):

@@ -44,13 +44,14 @@ class DashboardPageWiringTests(unittest.TestCase):
         expr = 'if (loadError) refreshRuntime(); bootstrapOverview()'
         self.assertEqual(module.direct_method_calls(expr), ['refreshRuntime', 'bootstrapOverview'])
 
-    def test_defined_members_in_includes_state_and_methods(self):
+    def test_defined_members_in_includes_state_methods_and_getters(self):
         js = """
         function settingsPage() {
             return {
                 loading: true,
                 loadError: '',
                 secLoading: false,
+                get filteredModels() { return []; },
                 async loadSettings() {},
                 saveProviderUrl() {},
             };
@@ -59,7 +60,7 @@ class DashboardPageWiringTests(unittest.TestCase):
 
         self.assertEqual(
             module.defined_members_in(js),
-            {'loading', 'loadError', 'secLoading', 'loadSettings', 'saveProviderUrl'},
+            {'loading', 'loadError', 'secLoading', 'filteredModels', 'loadSettings', 'saveProviderUrl'},
         )
 
     def test_undefined_state_like_identifiers_flags_missing_loading_symbol(self):
@@ -124,6 +125,26 @@ class DashboardPageWiringTests(unittest.TestCase):
         self.assertEqual(module.html_tag_depth_delta('<div x-data="budgetPage()">'), 1)
         self.assertEqual(module.html_tag_depth_delta('</div>'), -1)
         self.assertEqual(module.html_tag_depth_delta('<input type="text">'), 0)
+
+    def test_simple_member_root_handles_simple_xfor_sources(self):
+        self.assertEqual(module.simple_member_root('filteredSessions'), 'filteredSessions')
+        self.assertEqual(module.simple_member_root('advancedFields()'), 'advancedFields')
+        self.assertIsNone(module.simple_member_root('req.install.steps'))
+        self.assertIsNone(module.simple_member_root('(condition) ? a : b'))
+
+    def test_model_member_root_supports_dot_bracket_and_call_forms(self):
+        self.assertEqual(module.model_member_root('formValues[field.key]'), 'formValues')
+        self.assertEqual(module.model_member_root('configForm.name'), 'configForm')
+        self.assertEqual(module.model_member_root('spawnForm.caps.memory_read'), 'spawnForm')
+
+    def test_xmodel_and_xfor_regexes_capture_route_bindings(self):
+        line = (
+            '<input x-model="formValues[field.key]">'
+            '<template x-for="session in filteredSessions">'
+            '<button @click="refreshRuntime()">Refresh</button>'
+        )
+        self.assertEqual(module.XMODEL_RE.findall(line), ['formValues[field.key]'])
+        self.assertEqual(module.XFOR_RE.findall(line), ['session in filteredSessions'])
 
     def test_page_leave_hook_regex_matches_expected_hook(self):
         hook_re = module.page_leave_hook_re('destroy')
