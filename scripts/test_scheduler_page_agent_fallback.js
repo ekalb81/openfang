@@ -63,3 +63,49 @@ function loadPageWithStore(storeImpl) {
   assert.strictEqual(pageWithoutStore.agentName('1234567890abcdef'), '12345678...', 'agentName should preserve the existing shortened-ID fallback when shared agent metadata is unavailable');
   assert.strictEqual(pageWithoutStore.agentName('agent-2'), 'agent-2', 'agentName should keep short raw IDs when the app store is unavailable');
 })();
+
+(async () => {
+  let postCalled = false;
+  let errorMessage = '';
+  const context = {
+    Alpine: {
+      store() {
+        return { agents: [] };
+      },
+    },
+    OpenFangAPI: {
+      async get() {
+        throw new Error('not used in this test');
+      },
+      async post() {
+        postCalled = true;
+        throw new Error('run-now should not call the legacy schedules endpoint');
+      },
+      async put() {
+        throw new Error('not used in this test');
+      },
+      async del() {
+        throw new Error('not used in this test');
+      },
+    },
+    OpenFangToast: {
+      success() {},
+      error(message) {
+        errorMessage = message;
+      },
+      warn() {},
+      confirm(_title, _body, fn) { fn(); },
+    },
+    console,
+  };
+
+  vm.createContext(context);
+  vm.runInContext(source, context, { filename: schedulerPath });
+  const page = context.schedulerPage();
+
+  await page.runNow({ id: 'job-1', name: 'Nightly review' });
+
+  assert.strictEqual(postCalled, false, 'runNow should not call the legacy schedules run endpoint for cron-backed jobs');
+  assert.strictEqual(errorMessage, 'Run Now is not yet available for cron jobs', 'runNow should report the cron-job limitation directly');
+  assert.strictEqual(page.runningJobId, '', 'runNow should clear the in-progress marker after surfacing the limitation');
+})();
