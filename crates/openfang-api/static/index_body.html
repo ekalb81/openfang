@@ -2187,7 +2187,7 @@
 
     <!-- Page: Skills -->
     <template x-if="page === 'skills'">
-      <div x-data="skillsPage()">
+      <div x-data="skillsPage()" @page-leave.window="destroy()">
         <div class="page-header"><h2>Skills</h2></div>
         <div class="page-body" x-init="loadSkills()">
           <div class="info-card">

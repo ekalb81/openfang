@@ -114,7 +114,10 @@ function skillsPage() {
 
     // Debounced search — fires 350ms after user stops typing
     onSearchInput() {
-      if (this._searchTimer) clearTimeout(this._searchTimer);
+      if (this._searchTimer) {
+        clearTimeout(this._searchTimer);
+        this._searchTimer = null;
+      }
       var q = this.clawhubSearch.trim();
       if (!q) {
         this.clawhubResults = [];
@@ -122,7 +125,10 @@ function skillsPage() {
         return;
       }
       var self = this;
-      this._searchTimer = setTimeout(function() { self.searchClawHub(); }, 350);
+      this._searchTimer = setTimeout(function() {
+        self._searchTimer = null;
+        self.searchClawHub();
+      }, 350);
     },
 
     // ClawHub search
@@ -149,7 +155,10 @@ function skillsPage() {
       this.clawhubSearch = '';
       this.clawhubResults = [];
       this.clawhubError = '';
-      if (this._searchTimer) clearTimeout(this._searchTimer);
+      if (this._searchTimer) {
+        clearTimeout(this._searchTimer);
+        this._searchTimer = null;
+      }
     },
 
     // ClawHub browse by sort (with 60s client-side cache)
@@ -317,6 +326,16 @@ function skillsPage() {
       { name: 'api-design', description: 'REST API design patterns and conventions.', prompt_context: 'When designing REST APIs:\n- Use nouns for resources, not verbs\n- Use HTTP methods correctly (GET, POST, PUT, DELETE)\n- Return appropriate status codes\n- Use pagination for list endpoints\n- Version your API\n- Document all endpoints' },
       { name: 'security-checklist', description: 'OWASP-aligned security review checklist.', prompt_context: 'Security review checklist (OWASP aligned):\n- Input validation on all user inputs\n- Output encoding to prevent XSS\n- Parameterized queries to prevent SQL injection\n- Authentication and session management\n- Access control checks\n- CSRF protection\n- Security headers\n- Error handling without information leakage' },
     ],
+
+    destroy() {
+      if (this._searchTimer) {
+        clearTimeout(this._searchTimer);
+        this._searchTimer = null;
+      }
+      this.clawhubLoading = false;
+      this.detailLoading = false;
+      this.skillCodeLoading = false;
+    },
 
     // Check if skill is installed by slug
     isSkillInstalled: function(slug) {
