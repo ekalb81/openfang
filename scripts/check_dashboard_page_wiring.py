@@ -251,8 +251,13 @@ def main() -> int:
 
             for for_match in XFOR_RE.finditer(line):
                 _, _, source_expr = for_match.group(1).partition(" in ")
+                missing_methods = undefined_method_calls(source_expr, defined_methods)
+                for method_name in missing_methods:
+                    errors.append(
+                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-for source references {method_name}() but {component_name} does not define it"
+                    )
                 root = simple_member_root(source_expr)
-                if root and root not in defined_members:
+                if root and root not in defined_members and root not in missing_methods:
                     errors.append(
                         f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-for references {root} but {component_name} does not define it"
                     )

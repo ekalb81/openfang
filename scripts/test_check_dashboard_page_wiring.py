@@ -167,6 +167,16 @@ class DashboardPageWiringTests(unittest.TestCase):
         self.assertEqual(module.XFOR_RE.findall(line), ['session in filteredSessions'])
         self.assertEqual(module.XHTML_RE.findall(line), ['highlightSearch(renderMarkdown(msg.text))'])
 
+    def test_undefined_method_calls_detect_xfor_helper_typos(self):
+        self.assertEqual(
+            module.undefined_method_calls('configSectionField(fields)', {'configSectionFields'}),
+            ['configSectionField'],
+        )
+        self.assertEqual(
+            module.undefined_method_calls('advancedFields()', {'advancedFields'}),
+            [],
+        )
+
     def test_page_leave_hook_regex_matches_expected_hook(self):
         hook_re = module.page_leave_hook_re('destroy')
         self.assertIsNotNone(hook_re.search('@page-leave.window="destroy()"'))
@@ -289,6 +299,56 @@ class DashboardPageWiringTests(unittest.TestCase):
                     <div x-html="toolIcon(tool.name)"></div>
                     <div x-data="childWidget()">
                       <div x-html="missingChildMethod()"></div>
+                    </div>
+                  </section>
+                </template>
+                """,
+                encoding='utf-8',
+            )
+
+            old_repo_root = module.REPO_ROOT
+            old_pages_dir = module.PAGES_DIR
+            old_index_body = module.INDEX_BODY
+            try:
+                module.REPO_ROOT = root
+                module.PAGES_DIR = pages_dir
+                module.INDEX_BODY = root / 'crates/openfang-api/static/index_body.html'
+                self.assertEqual(module.main(), 1)
+            finally:
+                module.REPO_ROOT = old_repo_root
+                module.PAGES_DIR = old_pages_dir
+                module.INDEX_BODY = old_index_body
+
+    def test_main_flags_route_scoped_xfor_helper_typos_outside_nested_xdata(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pages_dir = root / 'crates/openfang-api/static/js/pages'
+            pages_dir.mkdir(parents=True)
+            (pages_dir / 'settings.js').write_text(
+                """
+                function settingsPage() {
+                    return {
+                        loading: false,
+                        loadError: '',
+                        configSchema: {},
+                        configSectionFields() { return []; },
+                    };
+                }
+                """,
+                encoding='utf-8',
+            )
+            (root / 'crates/openfang-api/static/index_body.html').write_text(
+                """
+                <template x-if="page === 'settings'">
+                  <section x-data="settingsPage()">
+                    <template x-for="(fields, section) in configSchema" :key="section">
+                      <template x-for="field in configSectionField(fields)" :key="field.name">
+                        <div x-text="field.name"></div>
+                      </template>
+                    </template>
+                    <div x-data="childWidget()">
+                      <template x-for="field in missingChildHelper(fields)" :key="field.name"></template>
                     </div>
                   </section>
                 </template>
