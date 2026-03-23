@@ -45,3 +45,7 @@ Thumbs.db
 *.swo
 *~
 .serena/
+
+# Python cache artifacts
+__pycache__/
+*.py[cod]
