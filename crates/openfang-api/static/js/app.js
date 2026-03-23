@@ -77,6 +77,35 @@ function copyCode(btn) {
   }
 }
 
+function readLocalValue(key, fallback) {
+  try {
+    var value = localStorage.getItem(key);
+    return value === null || value === undefined ? fallback : value;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function writeLocalValue(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {
+    // Storage may be unavailable in privacy-restricted contexts.
+  }
+}
+
+function removeLocalValue(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch (e) {
+    // Storage may be unavailable in privacy-restricted contexts.
+  }
+}
+
+function readLocalFlag(key) {
+  return readLocalValue(key, 'false') === 'true';
+}
+
 // Tool category icon SVGs — returns inline SVG for each tool category
 function toolIcon(toolName) {
   if (!toolName) return '';
@@ -122,7 +151,7 @@ function toolIcon(toolName) {
 // Alpine.js global store
 document.addEventListener('alpine:init', function() {
   // Restore saved API key on load
-  var savedKey = localStorage.getItem('openfang-api-key');
+  var savedKey = readLocalValue('openfang-api-key', '');
   if (savedKey) OpenFangAPI.setAuthToken(savedKey);
 
   Alpine.store('app', {
@@ -137,7 +166,7 @@ document.addEventListener('alpine:init', function() {
     pendingApprovalCount: 0,
     lastPendingApprovalSignature: '',
     pendingAgent: null,
-    focusMode: localStorage.getItem('openfang-focus') === 'true',
+    focusMode: readLocalFlag('openfang-focus'),
     showOnboarding: false,
     showAuthPrompt: false,
     authMode: 'apikey',
@@ -145,7 +174,7 @@ document.addEventListener('alpine:init', function() {
 
     toggleFocusMode() {
       this.focusMode = !this.focusMode;
-      localStorage.setItem('openfang-focus', this.focusMode);
+      writeLocalValue('openfang-focus', String(this.focusMode));
     },
 
     async refreshAgents() {
@@ -190,7 +219,7 @@ document.addEventListener('alpine:init', function() {
     },
 
     async checkOnboarding() {
-      if (localStorage.getItem('openfang-onboarded')) return;
+      if (readLocalValue('openfang-onboarded', '')) return;
       try {
         var config = await OpenFangAPI.get('/api/config');
         var apiKey = config && config.api_key;
@@ -206,7 +235,7 @@ document.addEventListener('alpine:init', function() {
 
     dismissOnboarding() {
       this.showOnboarding = false;
-      localStorage.setItem('openfang-onboarded', 'true');
+      writeLocalValue('openfang-onboarded', 'true');
     },
 
     async checkAuth() {
@@ -236,10 +265,10 @@ document.addEventListener('alpine:init', function() {
         this.showAuthPrompt = false;
       } catch(e) {
         if (e.message && (e.message.indexOf('Not authorized') >= 0 || e.message.indexOf('401') >= 0 || e.message.indexOf('Missing Authorization') >= 0 || e.message.indexOf('Unauthorized') >= 0)) {
-          var saved = localStorage.getItem('openfang-api-key');
+          var saved = readLocalValue('openfang-api-key', '');
           if (saved) {
             OpenFangAPI.setAuthToken('');
-            localStorage.removeItem('openfang-api-key');
+            removeLocalValue('openfang-api-key');
           }
           this.showAuthPrompt = true;
         }
@@ -249,7 +278,7 @@ document.addEventListener('alpine:init', function() {
     submitApiKey(key) {
       if (!key || !key.trim()) return;
       OpenFangAPI.setAuthToken(key.trim());
-      localStorage.setItem('openfang-api-key', key.trim());
+      writeLocalValue('openfang-api-key', key.trim());
       this.showAuthPrompt = false;
       this.refreshAgents();
     },
@@ -279,7 +308,7 @@ document.addEventListener('alpine:init', function() {
 
     clearApiKey() {
       OpenFangAPI.setAuthToken('');
-      localStorage.removeItem('openfang-api-key');
+      removeLocalValue('openfang-api-key');
     }
   });
 });
@@ -294,13 +323,13 @@ function app() {
         detail: { from: this.page, to: nextPage }
       }));
     },
-    themeMode: localStorage.getItem('openfang-theme-mode') || 'system',
+    themeMode: readLocalValue('openfang-theme-mode', 'system'),
     theme: (() => {
-      var mode = localStorage.getItem('openfang-theme-mode') || 'system';
+      var mode = readLocalValue('openfang-theme-mode', 'system');
       if (mode === 'system') return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       return mode;
     })(),
-    sidebarCollapsed: localStorage.getItem('openfang-sidebar') === 'collapsed',
+    sidebarCollapsed: readLocalValue('openfang-sidebar', '') === 'collapsed',
     mobileMenuOpen: false,
     connected: false,
     wsConnected: false,
@@ -397,7 +426,7 @@ function app() {
 
     setTheme(mode) {
       this.themeMode = mode;
-      localStorage.setItem('openfang-theme-mode', mode);
+      writeLocalValue('openfang-theme-mode', mode);
       if (mode === 'system') {
         this.theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       } else {
@@ -413,7 +442,7 @@ function app() {
 
     toggleSidebar() {
       this.sidebarCollapsed = !this.sidebarCollapsed;
-      localStorage.setItem('openfang-sidebar', this.sidebarCollapsed ? 'collapsed' : 'expanded');
+      writeLocalValue('openfang-sidebar', this.sidebarCollapsed ? 'collapsed' : 'expanded');
     },
 
     async pollStatus() {
