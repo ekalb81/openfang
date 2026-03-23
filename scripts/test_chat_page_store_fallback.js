@@ -6,7 +6,8 @@ const assert = require('assert');
 const chatPath = path.join(__dirname, '..', 'crates', 'openfang-api', 'static', 'js', 'pages', 'chat.js');
 const source = fs.readFileSync(chatPath, 'utf8');
 
-function loadPageWithStore(storeImpl) {
+function loadPageWithStore(storeImpl, options) {
+  options = options || {};
   const documentEvents = [];
   const wsConnections = [];
   const apiDeletes = [];
@@ -67,8 +68,18 @@ function loadPageWithStore(storeImpl) {
     },
     localStorage: {
       _data: Object.create(null),
-      getItem(key) { return Object.prototype.hasOwnProperty.call(this._data, key) ? this._data[key] : null; },
-      setItem(key, value) { this._data[key] = String(value); },
+      getItem(key) {
+        if (options.storageThrows) {
+          throw new Error('storage unavailable');
+        }
+        return Object.prototype.hasOwnProperty.call(this._data, key) ? this._data[key] : null;
+      },
+      setItem(key, value) {
+        if (options.storageThrows) {
+          throw new Error('storage unavailable');
+        }
+        this._data[key] = String(value);
+      },
     },
     location: { hash: '' },
     navigator: { clipboard: { writeText() { return Promise.resolve(); } } },
@@ -185,4 +196,27 @@ function loadPageWithStore(storeImpl) {
   assert.strictEqual(unavailable.page.currentAgent, null, 'killAgent should still clear the current agent when the store is unavailable');
   assert.deepStrictEqual(unavailable.apiDeletes, ['/api/agents/agent-3'], 'killAgent should still stop the agent when the store is unavailable');
   assert.strictEqual(unavailable.successMessages.length, 1, 'killAgent should still report success when the store is unavailable');
+
+  const storageDenied = loadPageWithStore(function() {
+    throw new Error('app store unavailable');
+  }, { storageThrows: true });
+  storageDenied.page.connectWs = function() {};
+  storageDenied.page.localFlag = storageDenied.page.localFlag.bind(storageDenied.page);
+  storageDenied.page.setLocalFlag = storageDenied.page.setLocalFlag.bind(storageDenied.page);
+  storageDenied.page.currentAgent = { id: 'agent-4', name: 'Delta' };
+  storageDenied.page.localFlag('of-chat-tips-seen');
+  assert.strictEqual(storageDenied.page.currentTip, 'Type / for commands', 'currentTip should fall back cleanly when localStorage reads throw');
+
+  storageDenied.page.dismissTips();
+  storageDenied.page.selectAgent(storageDenied.page.currentAgent);
+  assert.strictEqual(storageDenied.page.messages.length, 1, 'selectAgent should still inject the welcome message when localStorage is unavailable');
+
+  storageDenied.page.inputText = 'hello';
+  storageDenied.page.attachments = [];
+  storageDenied.page.scrollToBottom = function() {};
+  await storageDenied.page.sendMessage();
+  assert.ok(
+    storageDenied.page.messages.some(function(message) { return message.role === 'user' && message.text === 'hello'; }),
+    'sendMessage should still append the user message when localStorage writes throw'
+  );
 })();

@@ -77,11 +77,25 @@ function chatPage() {
     tipIndex: 0,
     tips: ['Type / for commands', '/think on for reasoning', 'Ctrl+Shift+F for focus mode', 'Drag files to attach', '/model to switch models', '/context to check usage', '/verbose off to hide tool details'],
     tipTimer: null,
+    localFlag(key) {
+      try {
+        return localStorage.getItem(key) === 'true';
+      } catch (_err) {
+        return false;
+      }
+    },
+    setLocalFlag(key, value) {
+      try {
+        localStorage.setItem(key, value ? 'true' : 'false');
+      } catch (_err) {
+        // Ignore storage-denied browsers; keep chat usable with in-memory state.
+      }
+    },
     get currentTip() {
-      if (localStorage.getItem('of-tips-off') === 'true') return '';
+      if (this.localFlag('of-tips-off')) return '';
       return this.tips[this.tipIndex % this.tips.length];
     },
-    dismissTips: function() { localStorage.setItem('of-tips-off', 'true'); },
+    dismissTips: function() { this.setLocalFlag('of-tips-off', true); },
     startTipCycle: function() {
       var self = this;
       if (this.tipTimer) clearInterval(this.tipTimer);
@@ -532,7 +546,7 @@ function chatPage() {
       this.messages = [];
       this.connectWs(agent.id);
       // Show welcome tips on first use
-      if (!localStorage.getItem('of-chat-tips-seen')) {
+      if (!this.localFlag('of-chat-tips-seen')) {
         var localMsgId = 0;
         this.messages.push({
           id: ++localMsgId,
@@ -549,7 +563,7 @@ function chatPage() {
           meta: '',
           tools: []
         });
-        localStorage.setItem('of-chat-tips-seen', 'true');
+        this.setLocalFlag('of-chat-tips-seen', true);
       }
       // Focus input after agent selection
       var self = this;
@@ -1019,7 +1033,7 @@ function chatPage() {
       // Always show user message immediately
       this.messages.push({ id: ++msgId, role: 'user', text: finalText, meta: '', tools: [], images: msgImages, ts: Date.now() });
       this.scrollToBottom();
-      localStorage.setItem('of-first-msg', 'true');
+      this.setLocalFlag('of-first-msg', true);
 
       // If already streaming, queue this message
       if (this.sending) {
