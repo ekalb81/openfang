@@ -1828,7 +1828,7 @@ const CHANNEL_REGISTRY: &[ChannelMeta] = &[
             "Go to Linked Devices",
             "Tap Link a Device and scan the QR code",
         ],
-        config_template: "[channels.whatsapp]\naccess_token_env = \"WHATSAPP_ACCESS_TOKEN\"\nphone_number_id = \"\"",
+        config_template: "[channels.whatsapp]\naccess_token_env = \"WHATSAPP_ACCESS_TOKEN\"\nverify_token_env = \"WHATSAPP_VERIFY_TOKEN\"\nphone_number_id = \"\"",
     },
     ChannelMeta {
         name: "signal",
@@ -2184,7 +2184,7 @@ const CHANNEL_REGISTRY: &[ChannelMeta] = &[
             "Generate a Page Access Token",
             "Paste it below",
         ],
-        config_template: "[channels.messenger]\npage_token_env = \"MESSENGER_PAGE_TOKEN\"",
+        config_template: "[channels.messenger]\npage_token_env = \"MESSENGER_PAGE_TOKEN\"\nverify_token_env = \"MESSENGER_VERIFY_TOKEN\"",
     },
     ChannelMeta {
         name: "threema",
