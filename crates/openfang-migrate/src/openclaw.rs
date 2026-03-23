@@ -2455,7 +2455,7 @@ fn migrate_sessions(
     report: &mut MigrationReport,
 ) -> Result<(), MigrateError> {
     let sessions_dir = source.join("sessions");
-    if !sessions_dir.exists() {
+    if !sessions_dir.is_dir() {
         return Ok(());
     }
 
@@ -3949,6 +3949,27 @@ mod tests {
         // Verify content preserved
         let content = std::fs::read_to_string(imported_dir.join("main.jsonl")).unwrap();
         assert!(content.contains("hello"));
+    }
+
+    #[test]
+    fn test_json5_session_migration_ignores_file_shaped_sessions_root() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+
+        create_json5_workspace(source.path());
+        std::fs::remove_dir_all(source.path().join("sessions")).unwrap();
+        std::fs::write(source.path().join("sessions"), "not a directory").unwrap();
+
+        let options = MigrateOptions {
+            source: crate::MigrateSource::OpenClaw,
+            source_dir: source.path().to_path_buf(),
+            target_dir: target.path().to_path_buf(),
+            dry_run: false,
+        };
+
+        migrate(&options).unwrap();
+
+        assert!(!target.path().join("imported_sessions").exists());
     }
 
     #[test]
