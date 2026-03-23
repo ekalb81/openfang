@@ -2268,19 +2268,47 @@ decay_rate = 0.05
 
         // --- Check 5: Stale daemon.json ---
         let daemon_json_path = openfang_dir.join("daemon.json");
-        if daemon_json_path.exists() && daemon_running.is_none() {
-            if repair {
-                let _ = std::fs::remove_file(&daemon_json_path);
-                if !json {
-                    ui::check_ok("Removed stale daemon.json");
+        if let Ok(meta) = std::fs::metadata(&daemon_json_path) {
+            if daemon_running.is_none() {
+                let mut stale_daemon_status = "warn";
+                if meta.is_file() {
+                    if repair {
+                        match std::fs::remove_file(&daemon_json_path) {
+                            Ok(()) => {
+                                if !json {
+                                    ui::check_ok("Removed stale daemon.json");
+                                }
+                                repaired = true;
+                                stale_daemon_status = "repaired";
+                            }
+                            Err(e) => {
+                                if !json {
+                                    ui::check_fail(&format!(
+                                        "Could not remove stale daemon.json: {e}"
+                                    ));
+                                }
+                                all_ok = false;
+                                stale_daemon_status = "fail";
+                            }
+                        }
+                    } else if !json {
+                        ui::check_warn(
+                            "Stale daemon.json found (daemon not running). Run with --repair to clean up.",
+                        );
+                    }
+                } else {
+                    if !json {
+                        ui::check_fail(
+                            "daemon.json exists but is not a regular file; remove or replace it before retrying doctor --repair.",
+                        );
+                    }
+                    all_ok = false;
+                    stale_daemon_status = "fail";
                 }
-                repaired = true;
-            } else if !json {
-                ui::check_warn(
-                    "Stale daemon.json found (daemon not running). Run with --repair to clean up.",
+                checks.push(
+                    serde_json::json!({"check": "stale_daemon_json", "status": stale_daemon_status}),
                 );
             }
-            checks.push(serde_json::json!({"check": "stale_daemon_json", "status": if repair { "repaired" } else { "warn" }}));
         }
 
         // --- Check 6: Database file ---
