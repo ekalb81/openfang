@@ -11051,6 +11051,16 @@ pub async fn get_agent_file(
         );
     }
 
+    match std::fs::metadata(&canonical) {
+        Ok(metadata) if metadata.is_file() => {}
+        _ => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "File not found"})),
+            );
+        }
+    }
+
     let content = match std::fs::read_to_string(&canonical) {
         Ok(c) => c,
         Err(_) => {
@@ -11143,18 +11153,27 @@ pub async fn set_agent_file(
     };
 
     let file_path = workspace.join(&filename);
-    // For new files, check the parent directory instead
-    let check_path = if file_path.exists() {
-        file_path
+    // For new files, check the parent directory instead. Existing placeholders must
+    // already be regular files so the atomic rename path cannot silently target a
+    // directory or other non-file entry.
+    let check_path = match std::fs::metadata(&file_path) {
+        Ok(metadata) if metadata.is_file() => file_path
             .canonicalize()
-            .unwrap_or_else(|_| file_path.clone())
-    } else {
-        // Parent must be inside workspace
-        file_path
-            .parent()
-            .and_then(|p| p.canonicalize().ok())
-            .map(|p| p.join(&filename))
-            .unwrap_or_else(|| file_path.clone())
+            .unwrap_or_else(|_| file_path.clone()),
+        Ok(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Target path is not a regular file"})),
+            );
+        }
+        Err(_) => {
+            // Parent must be inside workspace
+            file_path
+                .parent()
+                .and_then(|p| p.canonicalize().ok())
+                .map(|p| p.join(&filename))
+                .unwrap_or_else(|| file_path.clone())
+        }
     };
     if !check_path.starts_with(&ws_canonical) {
         return (
