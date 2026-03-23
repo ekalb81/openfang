@@ -5009,7 +5009,13 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
         <div class="page-header"><h2>Runtime</h2></div>
         <div class="page-body" x-init="loadData()">
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading runtime info...</span></div>
-          <div x-show="!loading">
+          <div x-show="!loading && loadError" class="empty-state" style="padding:32px 16px; text-align:center;">
+            <div style="font-size:40px; margin-bottom:12px;">⚠️</div>
+            <div style="font-size:16px; font-weight:600; margin-bottom:8px;">Runtime data unavailable</div>
+            <div class="muted" x-text="loadError"></div>
+            <button class="btn btn-secondary" style="margin-top:16px" @click="loadData()">Retry</button>
+          </div>
+          <div x-show="!loading && !loadError">
             <div class="grid grid-cols-4" style="gap:16px;margin-bottom:24px">
               <div class="card stat-card">
                 <div class="stat-label">Uptime</div>

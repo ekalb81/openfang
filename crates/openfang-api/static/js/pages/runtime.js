@@ -3,6 +3,7 @@ document.addEventListener('alpine:init', function() {
   Alpine.data('runtimePage', function() {
     return {
       loading: true,
+      loadError: '',
       uptime: '-',
       agentCount: 0,
       version: '-',
@@ -17,6 +18,7 @@ document.addEventListener('alpine:init', function() {
 
       async loadData() {
         this.loading = true;
+        this.loadError = '';
         try {
           var results = await Promise.all([
             OpenFangAPI.get('/api/status'),
@@ -50,6 +52,7 @@ document.addEventListener('alpine:init', function() {
             return p.auth_status === 'Configured' || p.reachable || p.is_local;
           });
         } catch(e) {
+          this.loadError = e.message || 'Could not load runtime data.';
           console.error('Runtime load error:', e);
         }
         this.loading = false;
