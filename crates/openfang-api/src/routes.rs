@@ -15,8 +15,47 @@ use openfang_runtime::kernel_handle::KernelHandle;
 use openfang_runtime::tool_runner::builtin_tool_definitions;
 use openfang_types::agent::{AgentId, AgentIdentity, AgentManifest};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 use std::time::Instant;
+
+fn workflows_dir(state: &AppState) -> PathBuf {
+    state
+        .kernel
+        .config
+        .workflows_dir
+        .clone()
+        .unwrap_or_else(|| state.kernel.config.home_dir.join("workflows"))
+}
+
+fn persist_workflow_definition(state: &AppState, workflow: &Workflow) {
+    let wf_dir = workflows_dir(state);
+    if let Err(e) = std::fs::create_dir_all(&wf_dir) {
+        tracing::warn!(path = ?wf_dir, error = %e, "Failed to create workflows directory");
+        return;
+    }
+
+    let wf_path = wf_dir.join(format!("{}.json", workflow.id));
+    match serde_json::to_string_pretty(workflow) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&wf_path, json) {
+                tracing::warn!(path = ?wf_path, workflow_id = %workflow.id, error = %e, "Failed to persist workflow definition");
+            }
+        }
+        Err(e) => {
+            tracing::warn!(workflow_id = %workflow.id, error = %e, "Failed to serialize workflow definition");
+        }
+    }
+}
+
+fn remove_workflow_definition(state: &AppState, workflow_id: WorkflowId) {
+    let wf_path = workflows_dir(state).join(format!("{}.json", workflow_id));
+    if let Err(e) = std::fs::remove_file(&wf_path) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(path = ?wf_path, workflow_id = %workflow_id, error = %e, "Failed to remove persisted workflow definition");
+        }
+    }
+}
 
 /// Shared application state.
 ///
@@ -852,27 +891,7 @@ pub async fn create_workflow(
 
     // Persist workflow definitions so they survive daemon restarts and can be
     // auto-loaded from disk on boot like the rest of the workflow subsystem.
-    let wf_dir = state
-        .kernel
-        .config
-        .workflows_dir
-        .clone()
-        .unwrap_or_else(|| state.kernel.config.home_dir.join("workflows"));
-    if let Err(e) = std::fs::create_dir_all(&wf_dir) {
-        tracing::warn!(path = ?wf_dir, error = %e, "Failed to create workflows directory");
-    } else {
-        let wf_path = wf_dir.join(format!("{}.json", id));
-        match serde_json::to_string_pretty(&workflow) {
-            Ok(json) => {
-                if let Err(e) = std::fs::write(&wf_path, json) {
-                    tracing::warn!(path = ?wf_path, workflow_id = %id, error = %e, "Failed to persist workflow definition");
-                }
-            }
-            Err(e) => {
-                tracing::warn!(workflow_id = %id, error = %e, "Failed to serialize workflow definition");
-            }
-        }
-    }
+    persist_workflow_definition(&state, &workflow);
 
     (
         StatusCode::CREATED,
@@ -1069,20 +1088,31 @@ pub async fn update_workflow(
         });
     }
 
+    let existing = match state.kernel.workflows.get_workflow(workflow_id).await {
+        Some(workflow) => workflow,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Workflow not found"})),
+            );
+        }
+    };
+
     let updated = Workflow {
         id: workflow_id,
         name,
         description,
         steps,
-        created_at: chrono::Utc::now(), // preserved by engine
+        created_at: existing.created_at,
     };
 
     if state
         .kernel
         .workflows
-        .update_workflow(workflow_id, updated)
+        .update_workflow(workflow_id, updated.clone())
         .await
     {
+        persist_workflow_definition(&state, &updated);
         (
             StatusCode::OK,
             Json(serde_json::json!({"status": "updated", "workflow_id": id})),
@@ -1111,6 +1141,7 @@ pub async fn delete_workflow(
     });
 
     if state.kernel.workflows.remove_workflow(workflow_id).await {
+        remove_workflow_definition(&state, workflow_id);
         (
             StatusCode::OK,
             Json(serde_json::json!({"status": "removed", "workflow_id": id})),
