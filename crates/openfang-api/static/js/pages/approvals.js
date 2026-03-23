@@ -11,7 +11,12 @@ function approvalsPage() {
 
     syncPendingApprovalStore() {
       if (typeof Alpine === 'undefined' || typeof Alpine.store !== 'function') return;
-      var appStore = Alpine.store('app');
+      var appStore;
+      try {
+        appStore = Alpine.store('app');
+      } catch (_e) {
+        return;
+      }
       if (!appStore) return;
       var pending = this.approvals.filter(function(a) { return a.status === 'pending'; });
       appStore.pendingApprovalCount = pending.length;
