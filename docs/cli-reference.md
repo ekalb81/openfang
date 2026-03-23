@@ -131,7 +131,7 @@ openfang start [--config <PATH>]
   Starting daemon...
 
   [ok] Kernel booted (groq/llama-3.3-70b-versatile)
-  [ok] 50 models available
+  [ok] 202 models available
   [ok] 3 agent(s) loaded
 
   API:        http://127.0.0.1:4200

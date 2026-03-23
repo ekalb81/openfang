@@ -1,6 +1,6 @@
 # OpenFang Documentation
 
-Welcome to the OpenFang documentation. OpenFang is the open-source Agent Operating System -- 14 Rust crates, 42 channels, 60 skills, 20 LLM providers, 76 API endpoints, and 16 security systems in a single binary.
+Welcome to the OpenFang documentation. OpenFang is the open-source Agent Operating System -- 14 Rust crates, 42 channels, 60 skills, 41 LLM providers, 76 API endpoints, and 16 security systems in a single binary.
 
 ---
 
@@ -27,7 +27,7 @@ Welcome to the OpenFang documentation. OpenFang is the open-source Agent Operati
 | Guide | Description |
 |-------|-------------|
 | [Channel Adapters](channel-adapters.md) | 42 messaging channels -- setup, configuration, custom adapters |
-| [LLM Providers](providers.md) | 20 providers, 51 models, 23 aliases -- setup and model routing |
+| [LLM Providers](providers.md) | 41 providers, 202 models, 23 aliases -- setup and model routing |
 | [Skills](skill-development.md) | 60 bundled skills, custom skill development, FangHub marketplace |
 | [MCP & A2A](mcp-a2a.md) | Model Context Protocol and Agent-to-Agent protocol integration |
 
@@ -74,8 +74,8 @@ openfang init && openfang start
 | Messaging channels | 42 |
 | Bundled skills | 60 |
 | Built-in tools | 38 |
-| LLM providers | 20 |
-| Models in catalog | 51 |
+| LLM providers | 41 |
+| Models in catalog | 202 |
 | Model aliases | 23 |
 | API endpoints | 76 |
 | Security systems | 16 |

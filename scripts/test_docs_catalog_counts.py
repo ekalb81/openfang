@@ -11,7 +11,9 @@ CONFIGURATION_DOC = REPO_ROOT / "docs/configuration.md"
 ARCHITECTURE_DOC = REPO_ROOT / "docs/architecture.md"
 PRODUCTION_CHECKLIST_DOC = REPO_ROOT / "docs/production-checklist.md"
 GETTING_STARTED_DOC = REPO_ROOT / "docs/getting-started.md"
+CLI_REFERENCE_DOC = REPO_ROOT / "docs/cli-reference.md"
 CLI_MAIN_RS = REPO_ROOT / "crates/openfang-cli/src/main.rs"
+MODEL_CATALOG_RS = REPO_ROOT / "crates/openfang-runtime/src/model_catalog.rs"
 
 
 def readme_metric(name: str) -> int:
@@ -52,6 +54,19 @@ def provider_catalog_count() -> int:
     return int(match.group(1))
 
 
+def live_provider_count() -> int:
+    text = MODEL_CATALOG_RS.read_text(encoding="utf-8")
+    start = text.index("fn builtin_providers()")
+    end = text.index("fn builtin_aliases()")
+    return text[start:end].count("ProviderInfo {")
+
+
+def live_model_count() -> int:
+    text = MODEL_CATALOG_RS.read_text(encoding="utf-8")
+    start = text.index("fn builtin_models()")
+    return text[start:].count("ModelCatalogEntry {")
+
+
 def first_count(pattern: str, path: Path, description: str) -> int:
     text = path.read_text(encoding="utf-8")
     match = re.search(pattern, text, re.IGNORECASE)
@@ -62,6 +77,10 @@ def first_count(pattern: str, path: Path, description: str) -> int:
 
 def cli_channel_count() -> int:
     return first_count(r"(\d+)\s+channels\s+\\u\{00b7\}\s+60\s+skills", CLI_MAIN_RS, "CLI long_about channel count")
+
+
+def cli_model_count() -> int:
+    return first_count(r"60\s+skills\s+\\u\{00b7\}\s+(\d+)\s+models", CLI_MAIN_RS, "CLI long_about model count")
 
 
 class DocsCatalogCountTests(unittest.TestCase):
@@ -94,8 +113,27 @@ class DocsCatalogCountTests(unittest.TestCase):
         )
         self.assertEqual(expected, cli_channel_count())
 
-    def test_readme_provider_count_matches_provider_guide(self):
-        self.assertEqual(provider_catalog_count(), readme_metric("LLM providers"))
+    def test_top_level_provider_counts_match_live_model_catalog(self):
+        expected = live_provider_count()
+        self.assertEqual(expected, readme_metric("LLM providers"))
+        self.assertEqual(
+            expected,
+            first_count(r"(\d+)\s+LLM providers", README_DOC, "README intro provider count"),
+        )
+        self.assertEqual(provider_catalog_count(), expected)
+
+    def test_top_level_model_counts_match_live_model_catalog(self):
+        expected = live_model_count()
+        self.assertEqual(expected, readme_metric("Models in catalog"))
+        self.assertEqual(
+            expected,
+            first_count(r"\|\s*\[LLM Providers\]\(providers\.md\)\s*\|\s*\d+\s+providers,\s*(\d+)\s+models", README_DOC, "README providers summary model count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"\[ok\]\s+(\d+)\s+models available", CLI_REFERENCE_DOC, "CLI reference model count"),
+        )
+        self.assertEqual(expected, cli_model_count())
 
 
 if __name__ == "__main__":
