@@ -958,11 +958,31 @@ pub async fn run_workflow(
 /// GET /api/workflows/:id/runs — List runs for a workflow.
 pub async fn list_workflow_runs(
     State(state): State<Arc<AppState>>,
-    Path(_id): Path<String>,
+    Path(id): Path<String>,
 ) -> impl IntoResponse {
+    let workflow_id = WorkflowId(match id.parse() {
+        Ok(u) => u,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid workflow ID"})),
+            )
+                .into_response();
+        }
+    });
+
+    if state.kernel.workflows.get_workflow(workflow_id).await.is_none() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Workflow not found"})),
+        )
+            .into_response();
+    }
+
     let runs = state.kernel.workflows.list_runs(None).await;
     let list: Vec<serde_json::Value> = runs
         .iter()
+        .filter(|r| r.workflow_id == workflow_id)
         .map(|r| {
             serde_json::json!({
                 "id": r.id.to_string(),
@@ -974,7 +994,7 @@ pub async fn list_workflow_runs(
             })
         })
         .collect();
-    Json(list)
+    Json(list).into_response()
 }
 
 /// GET /api/workflows/:id — Get a single workflow by ID.
