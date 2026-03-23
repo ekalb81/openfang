@@ -3533,7 +3533,7 @@ impl OpenFangKernel {
 
         // Read and parse config file (using load_config to process $include directives)
         let config_path = self.config.home_dir.join("config.toml");
-        let new_config = if config_path.exists() {
+        let new_config = if config_path.is_file() {
             crate::config::load_config(Some(&config_path))
         } else {
             return Err("Config file not found".to_string());
