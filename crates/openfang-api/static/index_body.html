@@ -2514,7 +2514,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Hands -->
     <template x-if="page === 'hands'">
-      <div x-data="handsPage()">
+      <div x-data="handsPage()" @page-leave.window="destroy()">
         <div class="page-header"><h2>Hands</h2></div>
         <div class="page-body" x-init="loadData()">
           <div class="info-card">

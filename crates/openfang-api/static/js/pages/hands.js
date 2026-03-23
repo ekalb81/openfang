@@ -14,9 +14,11 @@ function handsPage() {
     detailHand: null,
     settingsValues: {},
     _toastTimer: null,
+    _installAdvanceTimer: null,
     browserViewer: null,
     browserViewerOpen: false,
     _browserPollTimer: null,
+    _dashboardRenderTimer: null,
 
     // ── Trader Dashboard State ────────────────────────────────────────────
     dashboardOpen: false,
@@ -192,7 +194,9 @@ function handsPage() {
           this.showToast('All dependencies installed successfully!');
           // Auto-advance to step 2 after a short delay
           var self = this;
-          setTimeout(function() {
+          if (this._installAdvanceTimer) clearTimeout(this._installAdvanceTimer);
+          this._installAdvanceTimer = setTimeout(function() {
+            self._installAdvanceTimer = null;
             self.installProgress = null;
             self.setupNextStep();
           }, 1500);
@@ -588,9 +592,7 @@ function handsPage() {
       this.dashboardData = null;
       await this._fetchDashboardData(inst);
       this.dashboardLoading = false;
-      // Render charts after DOM update
-      var self = this;
-      setTimeout(function() { self._renderCharts(); }, 60);
+      this.scheduleDashboardRender();
     },
 
     async refreshDashboard() {
@@ -598,8 +600,7 @@ function handsPage() {
       this.dashboardLoading = true;
       await this._fetchDashboardData(this._dashboardInst);
       this.dashboardLoading = false;
-      var self = this;
-      setTimeout(function() { self._renderCharts(); }, 60);
+      this.scheduleDashboardRender();
     },
 
     closeDashboard() {
@@ -727,6 +728,26 @@ function handsPage() {
       if (this._chartEquity) { this._chartEquity.destroy(); this._chartEquity = null; }
       if (this._chartPnl) { this._chartPnl.destroy(); this._chartPnl = null; }
       if (this._chartRadar) { this._chartRadar.destroy(); this._chartRadar = null; }
+    },
+
+    scheduleDashboardRender() {
+      var self = this;
+      if (this._dashboardRenderTimer) clearTimeout(this._dashboardRenderTimer);
+      this._dashboardRenderTimer = setTimeout(function() {
+        self._dashboardRenderTimer = null;
+        self._renderCharts();
+      }, 60);
+    },
+
+    destroy() {
+      if (this._toastTimer) { clearTimeout(this._toastTimer); this._toastTimer = null; }
+      if (this._clipboardTimer) { clearTimeout(this._clipboardTimer); this._clipboardTimer = null; }
+      if (this._installAdvanceTimer) { clearTimeout(this._installAdvanceTimer); this._installAdvanceTimer = null; }
+      if (this._dashboardRenderTimer) { clearTimeout(this._dashboardRenderTimer); this._dashboardRenderTimer = null; }
+      this.stopBrowserPolling();
+      this.browserViewerOpen = false;
+      this.browserViewer = null;
+      this.closeDashboard();
     },
 
     _renderCharts() {
