@@ -28,6 +28,14 @@ fn workflows_dir(state: &AppState) -> PathBuf {
         .unwrap_or_else(|| state.kernel.config.home_dir.join("workflows"))
 }
 
+fn persist_workflow_definition_to_path(
+    path: &std::path::Path,
+    workflow: &Workflow,
+) -> Result<(), std::io::Error> {
+    let json = serde_json::to_string_pretty(workflow).map_err(std::io::Error::other)?;
+    write_text_file_atomically(path, &json)
+}
+
 fn persist_workflow_definition(state: &AppState, workflow: &Workflow) {
     let wf_dir = workflows_dir(state);
     if let Err(e) = std::fs::create_dir_all(&wf_dir) {
@@ -36,15 +44,8 @@ fn persist_workflow_definition(state: &AppState, workflow: &Workflow) {
     }
 
     let wf_path = wf_dir.join(format!("{}.json", workflow.id));
-    match serde_json::to_string_pretty(workflow) {
-        Ok(json) => {
-            if let Err(e) = std::fs::write(&wf_path, json) {
-                tracing::warn!(path = ?wf_path, workflow_id = %workflow.id, error = %e, "Failed to persist workflow definition");
-            }
-        }
-        Err(e) => {
-            tracing::warn!(workflow_id = %workflow.id, error = %e, "Failed to serialize workflow definition");
-        }
+    if let Err(e) = persist_workflow_definition_to_path(&wf_path, workflow) {
+        tracing::warn!(path = ?wf_path, workflow_id = %workflow.id, error = %e, "Failed to persist workflow definition");
     }
 }
 
@@ -13593,6 +13594,81 @@ mod channel_config_tests {
                 .find(|f| f.key == "secret_env")
                 .unwrap()
                 .required
+        );
+    }
+
+    #[test]
+    fn test_persist_workflow_definition_to_path_writes_atomically_without_temp_leaks() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("workflow.json");
+        let workflow = Workflow {
+            id: WorkflowId::new(),
+            name: "Smoke Test".to_string(),
+            description: "Ensures workflow persistence is atomic".to_string(),
+            steps: vec![WorkflowStep {
+                name: "draft".to_string(),
+                agent: StepAgent::ByName {
+                    name: "assistant".to_string(),
+                },
+                prompt_template: "Do the thing".to_string(),
+                mode: StepMode::Sequential,
+                timeout_secs: 30,
+                error_mode: ErrorMode::Fail,
+                output_var: None,
+            }],
+            created_at: chrono::Utc::now(),
+        };
+
+        persist_workflow_definition_to_path(&path, &workflow).unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let persisted: Workflow = serde_json::from_str(&contents).unwrap();
+        assert_eq!(persisted.name, workflow.name);
+        assert_eq!(persisted.description, workflow.description);
+        assert_eq!(persisted.steps.len(), 1);
+        assert_eq!(
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|name| name.contains(".tmp-"))
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn test_persist_workflow_definition_to_path_cleans_up_temp_file_on_write_error() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("missing").join("workflow.json");
+        let workflow = Workflow {
+            id: WorkflowId::new(),
+            name: "Smoke Test".to_string(),
+            description: "write failure should still clean tmp files".to_string(),
+            steps: vec![WorkflowStep {
+                name: "draft".to_string(),
+                agent: StepAgent::ByName {
+                    name: "assistant".to_string(),
+                },
+                prompt_template: "Do the thing".to_string(),
+                mode: StepMode::Sequential,
+                timeout_secs: 30,
+                error_mode: ErrorMode::Fail,
+                output_var: None,
+            }],
+            created_at: chrono::Utc::now(),
+        };
+
+        let err = persist_workflow_definition_to_path(&path, &workflow).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+        assert_eq!(
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|name| name.contains(".tmp-"))
+                .count(),
+            0
         );
     }
 
