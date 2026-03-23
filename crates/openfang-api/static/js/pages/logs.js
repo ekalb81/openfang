@@ -122,6 +122,11 @@ function logsPage() {
       }
     },
 
+    async init() {
+      await this.loadData();
+      this.startStreaming();
+    },
+
     async loadData() {
       this.loading = true;
       return this.fetchLogs();
