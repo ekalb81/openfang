@@ -58,10 +58,23 @@ function sessionsPage() {
     },
 
     openInChat(session) {
-      var agents = Alpine.store('app').agents;
+      var appStore = null;
+      try {
+        appStore = Alpine.store('app');
+      } catch (_storeError) {}
+
+      var agents = (appStore && Array.isArray(appStore.agents)) ? appStore.agents : [];
       var agent = agents.find(function(a) { return a.id === session.agent_id; });
-      if (agent) {
-        Alpine.store('app').pendingAgent = agent;
+      if (!agent && session && session.agent_id) {
+        agent = {
+          id: session.agent_id,
+          name: session.agent_name || session.agent_id,
+          model_provider: '?',
+          model_name: '?',
+        };
+      }
+      if (appStore && agent) {
+        appStore.pendingAgent = agent;
       }
       location.hash = 'agents';
     },
