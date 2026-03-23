@@ -11,6 +11,7 @@ CONFIGURATION_DOC = REPO_ROOT / "docs/configuration.md"
 ARCHITECTURE_DOC = REPO_ROOT / "docs/architecture.md"
 PRODUCTION_CHECKLIST_DOC = REPO_ROOT / "docs/production-checklist.md"
 GETTING_STARTED_DOC = REPO_ROOT / "docs/getting-started.md"
+CLI_MAIN_RS = REPO_ROOT / "crates/openfang-cli/src/main.rs"
 
 
 def readme_metric(name: str) -> int:
@@ -59,6 +60,10 @@ def first_count(pattern: str, path: Path, description: str) -> int:
     return int(match.group(1))
 
 
+def cli_channel_count() -> int:
+    return first_count(r"(\d+)\s+channels\s+\\u\{00b7\}\s+60\s+skills", CLI_MAIN_RS, "CLI long_about channel count")
+
+
 class DocsCatalogCountTests(unittest.TestCase):
     def test_readme_channel_counts_match_live_channel_catalog(self):
         expected = channel_catalog_count()
@@ -87,6 +92,7 @@ class DocsCatalogCountTests(unittest.TestCase):
             expected,
             first_count(r"Connect any of\s+(\d+)\s+messaging platforms", GETTING_STARTED_DOC, "getting started channel count"),
         )
+        self.assertEqual(expected, cli_channel_count())
 
     def test_readme_provider_count_matches_provider_guide(self):
         self.assertEqual(provider_catalog_count(), readme_metric("LLM providers"))
