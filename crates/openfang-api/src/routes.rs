@@ -9207,13 +9207,13 @@ pub async fn set_provider_key(
                 name, model_id, env_var
             );
             backup_config(&config_path);
-            if let Ok(existing) = std::fs::read_to_string(&config_path) {
+            let persisted_toml = if let Ok(existing) = std::fs::read_to_string(&config_path) {
                 let cleaned = remove_toml_section(&existing, "default_model");
-                let _ =
-                    std::fs::write(&config_path, format!("{}\n{}", cleaned.trim(), update_toml));
+                format!("{}\n{}", cleaned.trim(), update_toml)
             } else {
-                let _ = std::fs::write(&config_path, update_toml);
-            }
+                update_toml.clone()
+            };
+            let _ = write_text_file_atomically(&config_path, &persisted_toml);
 
             // Hot-update the in-memory default model override so resolve_driver()
             // immediately creates drivers for the new provider — no restart needed.
