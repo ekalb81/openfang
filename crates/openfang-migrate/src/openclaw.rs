@@ -1254,9 +1254,12 @@ fn scan_from_legacy_yaml(path: &Path, result: &mut ScanResult) {
 
     // Scan skills
     let skills_dir = path.join("skills");
-    if skills_dir.exists() {
+    if skills_dir.is_dir() {
         for subdir in &["community", "custom"] {
             let sub = skills_dir.join(subdir);
+            if !sub.is_dir() {
+                continue;
+            }
             if let Ok(entries) = std::fs::read_dir(&sub) {
                 for entry in entries.flatten() {
                     if entry.path().is_dir() {
@@ -3289,11 +3292,14 @@ fn migrate_legacy_workspaces(
 
 fn scan_legacy_skills(source: &Path, report: &mut MigrationReport) {
     let skills_dir = source.join("skills");
-    if !skills_dir.exists() {
+    if !skills_dir.is_dir() {
         return;
     }
 
     let mut scan_subdir = |subdir: &Path| {
+        if !subdir.is_dir() {
+            return;
+        }
         if let Ok(entries) = std::fs::read_dir(subdir) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -4173,6 +4179,28 @@ mod tests {
     }
 
     #[test]
+    fn test_scan_legacy_skills_ignores_non_directory_roots_and_subdirs() {
+        let source = TempDir::new().unwrap();
+
+        std::fs::write(source.path().join("skills"), "not a directory").unwrap();
+        let mut report = MigrationReport::default();
+        scan_legacy_skills(source.path(), &mut report);
+        assert!(report.skipped.is_empty(), "file-shaped skills root should be ignored");
+
+        std::fs::remove_file(source.path().join("skills")).unwrap();
+        std::fs::create_dir_all(source.path().join("skills")).unwrap();
+        std::fs::write(source.path().join("skills").join("community"), "not a directory").unwrap();
+        std::fs::write(source.path().join("skills").join("custom"), "not a directory").unwrap();
+
+        let mut report = MigrationReport::default();
+        scan_legacy_skills(source.path(), &mut report);
+        assert!(
+            report.skipped.is_empty(),
+            "file-shaped community/custom roots should be ignored"
+        );
+    }
+
+    #[test]
     fn test_json5_dry_run() {
         let source = TempDir::new().unwrap();
         let target = TempDir::new().unwrap();
@@ -4714,6 +4742,18 @@ mod tests {
             !result.channels.contains(&"telegram".to_string()),
             "directory-shaped telegram.yaml should be ignored"
         );
+    }
+
+    #[test]
+    fn test_scan_workspace_ignores_non_directory_skill_roots() {
+        let source = TempDir::new().unwrap();
+        create_legacy_yaml_workspace(source.path());
+
+        std::fs::write(source.path().join("skills"), "not a directory").unwrap();
+
+        let result = scan_openclaw_workspace(source.path());
+        assert!(result.has_config);
+        assert!(result.skills.is_empty(), "file-shaped skills root should be ignored");
     }
 
     #[test]
