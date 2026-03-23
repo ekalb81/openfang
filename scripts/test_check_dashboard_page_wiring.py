@@ -23,6 +23,58 @@ class DashboardPageWiringTests(unittest.TestCase):
         self.assertTrue(module.is_retry_or_refresh_label('<span>Refresh</span> dashboard'))
         self.assertFalse(module.is_retry_or_refresh_label('Delete'))
 
+    def test_defined_methods_in_supports_shorthand_and_function_properties(self):
+        js = """
+        function logsPage() {
+            return {
+                async load() {},
+                stopSSE: function() {},
+                stopAutoRefresh: async function() {},
+                plainMethod() {},
+            };
+        }
+        """
+
+        self.assertEqual(
+            module.defined_methods_in(js),
+            {'load', 'stopSSE', 'stopAutoRefresh', 'plainMethod'},
+        )
+
+    def test_direct_method_calls_ignores_if_keyword(self):
+        expr = 'if (loadError) refreshRuntime(); bootstrapOverview()'
+        self.assertEqual(module.direct_method_calls(expr), ['refreshRuntime', 'bootstrapOverview'])
+
+    def test_collect_route_lines_groups_nested_template_body(self):
+        index_lines = [
+            '<template x-if="page === \'runtime\'">',
+            '  <section x-data="runtimePage()">',
+            '    <template x-if="loadError">',
+            '      <button @click="refreshRuntime()">Refresh Runtime</button>',
+            '    </template>',
+            '  </section>',
+            '</template>',
+        ]
+
+        self.assertEqual(
+            module.collect_route_lines(index_lines),
+            {
+                'runtime': [
+                    (1, '<template x-if="page === \'runtime\'">'),
+                    (2, '  <section x-data="runtimePage()">'),
+                    (3, '    <template x-if="loadError">'),
+                    (4, '      <button @click="refreshRuntime()">Refresh Runtime</button>'),
+                    (5, '    </template>'),
+                    (6, '  </section>'),
+                    (7, '</template>'),
+                ]
+            },
+        )
+
+    def test_page_leave_hook_regex_matches_expected_hook(self):
+        hook_re = module.page_leave_hook_re('destroy')
+        self.assertIsNotNone(hook_re.search('@page-leave.window="destroy()"'))
+        self.assertIsNone(hook_re.search('@page-leave.window="stopSSE()"'))
+
 
 if __name__ == '__main__':
     unittest.main()
