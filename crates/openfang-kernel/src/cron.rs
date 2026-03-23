@@ -122,18 +122,39 @@ impl CronScheduler {
         Ok(count)
     }
 
-    /// Persist all jobs to disk via atomic write (write to `.tmp`, then rename).
+    /// Persist all jobs to disk via atomic write (write to a same-directory temp file, then rename).
     pub fn persist(&self) -> OpenFangResult<()> {
         let metas: Vec<JobMeta> = self.jobs.iter().map(|r| r.value().clone()).collect();
         let data = serde_json::to_string_pretty(&metas)
             .map_err(|e| OpenFangError::Internal(format!("Failed to serialize cron jobs: {e}")))?;
-        let tmp_path = self.persist_path.with_extension("json.tmp");
-        std::fs::write(&tmp_path, data.as_bytes()).map_err(|e| {
-            OpenFangError::Internal(format!("Failed to write cron jobs temp file: {e}"))
-        })?;
-        std::fs::rename(&tmp_path, &self.persist_path).map_err(|e| {
-            OpenFangError::Internal(format!("Failed to rename cron jobs file: {e}"))
-        })?;
+
+        let file_name = self
+            .persist_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| {
+                OpenFangError::Internal("Failed to determine cron persist file name".to_string())
+            })?;
+        let tmp_path = self
+            .persist_path
+            .with_file_name(format!(".{file_name}.tmp-{}", uuid::Uuid::new_v4()));
+
+        let write_result = (|| -> OpenFangResult<()> {
+            std::fs::write(&tmp_path, data.as_bytes()).map_err(|e| {
+                OpenFangError::Internal(format!("Failed to write cron jobs temp file: {e}"))
+            })?;
+            std::fs::rename(&tmp_path, &self.persist_path).map_err(|e| {
+                OpenFangError::Internal(format!("Failed to rename cron jobs file: {e}"))
+            })?;
+            Ok(())
+        })();
+
+        if write_result.is_err() {
+            let _ = std::fs::remove_file(&tmp_path);
+        }
+
+        write_result?;
         debug!(count = metas.len(), "Persisted cron jobs");
         Ok(())
     }
@@ -784,6 +805,30 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let sched = CronScheduler::new(tmp.path(), 100);
         assert_eq!(sched.load().unwrap(), 0);
+    }
+
+    #[test]
+    fn test_persist_write_failure_cleans_temp_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sched = CronScheduler::new(tmp.path(), 100);
+        let agent = AgentId::new();
+        sched.add_job(make_job(agent), false).unwrap();
+
+        let persist_path = tmp.path().join("cron_jobs.json");
+        std::fs::create_dir_all(&persist_path).unwrap();
+
+        let error = sched.persist().unwrap_err().to_string();
+        assert!(error.contains("Failed to write cron jobs temp file"));
+
+        let leftover_tmp = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .any(|name| name.starts_with(".cron_jobs.json.tmp-"));
+        assert!(
+            !leftover_tmp,
+            "temporary cron persist file should be cleaned up after write failure"
+        );
     }
 
     // -- compute_next_run ---------------------------------------------------
