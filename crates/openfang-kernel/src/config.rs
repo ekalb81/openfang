@@ -20,7 +20,7 @@ pub fn load_config(path: Option<&Path>) -> KernelConfig {
         .map(|p| p.to_path_buf())
         .unwrap_or_else(default_config_path);
 
-    if config_path.exists() {
+    if config_path.is_file() {
         match std::fs::read_to_string(&config_path) {
             Ok(contents) => match toml::from_str::<toml::Value>(&contents) {
                 Ok(mut root_value) => {
