@@ -7,15 +7,18 @@ PAGES_DIR = REPO_ROOT / 'crates' / 'openfang-api' / 'static' / 'js' / 'pages'
 INDEX_BODY = (REPO_ROOT / 'crates' / 'openfang-api' / 'static' / 'index_body.html').read_text()
 
 RESOURCE_ASSIGN_RE = re.compile(r'this\.(\w+)\s*=\s*(setInterval|setTimeout|new EventSource)')
+EVENT_LISTENER_RE = re.compile(
+    r'(document|window)\.addEventListener\(\s*[\"\']([^\"\']+)[\"\']\s*,\s*this\.(\w+)',
+)
 METHOD_START_TEMPLATE = r'(?:{name}\(\)|{name}\s*:\s*function\s*\(\))\s*\{{'
 THIS_METHOD_CALL_RE = re.compile(r'\bthis\.([A-Za-z_][A-Za-z0-9_]*)\s*\(')
 
 
-def mounted_resource_pages() -> dict[str, str]:
+def mounted_cleanup_pages() -> dict[str, str]:
     pages = {}
     for page_file in sorted(PAGES_DIR.glob('*.js')):
         text = page_file.read_text()
-        if not RESOURCE_ASSIGN_RE.search(text):
+        if not RESOURCE_ASSIGN_RE.search(text) and not EVENT_LISTENER_RE.search(text):
             continue
         page_name = page_file.stem.replace('-', '_')
         component_name = ''.join(part.capitalize() if idx else part for idx, part in enumerate(page_name.split('_'))) + 'Page'
@@ -24,12 +27,12 @@ def mounted_resource_pages() -> dict[str, str]:
     return pages
 
 
-RESOURCE_PAGES = mounted_resource_pages()
+CLEANUP_PAGES = mounted_cleanup_pages()
 
 
 class DashboardPageResourceCleanupTests(unittest.TestCase):
-    def test_resource_pages_keep_route_leave_destroy_hook(self):
-        for filename, page_name in RESOURCE_PAGES.items():
+    def test_cleanup_pages_keep_route_leave_destroy_hook(self):
+        for filename, page_name in CLEANUP_PAGES.items():
             with self.subTest(page=filename):
                 self.assertIn(
                     f'{page_name}()"',
@@ -43,11 +46,12 @@ class DashboardPageResourceCleanupTests(unittest.TestCase):
                 )
 
     def test_destroy_cleans_every_long_lived_resource_handle(self):
-        for filename in RESOURCE_PAGES:
+        for filename in CLEANUP_PAGES:
             text = (PAGES_DIR / filename).read_text()
             cleanup_body = self._cleanup_body(text, filename)
             handles = RESOURCE_ASSIGN_RE.findall(text)
-            self.assertTrue(handles, msg=f'{filename} should define at least one long-lived resource handle')
+            if not handles:
+                continue
             for handle, kind in handles:
                 with self.subTest(page=filename, handle=handle, kind=kind):
                     self.assertIn(handle, cleanup_body, msg=f'{filename} cleanup path should mention {handle}')
@@ -71,7 +75,7 @@ class DashboardPageResourceCleanupTests(unittest.TestCase):
                         )
 
     def test_destroy_nulls_or_resets_handles_after_cleanup(self):
-        for filename in RESOURCE_PAGES:
+        for filename in CLEANUP_PAGES:
             text = (PAGES_DIR / filename).read_text()
             cleanup_body = self._cleanup_body(text, filename)
             for handle, kind in RESOURCE_ASSIGN_RE.findall(text):
@@ -81,6 +85,26 @@ class DashboardPageResourceCleanupTests(unittest.TestCase):
                         cleanup_body,
                         expected_reset,
                         msg=f'{filename} cleanup path should reset {handle} after cleanup',
+                    )
+
+    def test_destroy_removes_document_and_window_event_listeners(self):
+        for filename in CLEANUP_PAGES:
+            text = (PAGES_DIR / filename).read_text()
+            cleanup_body = self._cleanup_body(text, filename)
+            listeners = EVENT_LISTENER_RE.findall(text)
+            if not listeners:
+                continue
+            for target, event_name, handler in listeners:
+                with self.subTest(page=filename, target=target, event=event_name, handler=handler):
+                    self.assertRegex(
+                        cleanup_body,
+                        rf'{target}\.removeEventListener\(\s*[\"\']{re.escape(event_name)}[\"\']\s*,\s*this\.{re.escape(handler)}\s*\)',
+                        msg=f'{filename} cleanup path should remove {target} {event_name} listener via {handler}',
+                    )
+                    self.assertRegex(
+                        cleanup_body,
+                        rf'this\.{re.escape(handler)}\s*=\s*null',
+                        msg=f'{filename} cleanup path should reset listener handle {handler}',
                     )
 
     def test_cleanup_body_includes_destroy_helper_bodies(self):
@@ -120,6 +144,29 @@ function channelsPage() {
         body = self._method_body(sample, 'destroy', 'sample.js')
         self.assertIn('clearInterval(this.pollTimer)', body)
         self.assertIn('this.qrPollTimer = null', body)
+
+    def test_event_listener_cleanup_guard_matches_named_handlers(self):
+        sample = """
+function chatPage() {
+  return {
+    init() {
+      this._keydownHandler = function() {};
+      document.addEventListener('keydown', this._keydownHandler);
+    },
+    destroy() {
+      if (this._keydownHandler) {
+        document.removeEventListener('keydown', this._keydownHandler);
+        this._keydownHandler = null;
+      }
+    }
+  };
+}
+"""
+        listeners = EVENT_LISTENER_RE.findall(sample)
+        self.assertEqual(listeners, [('document', 'keydown', '_keydownHandler')])
+        cleanup_body = self._cleanup_body(sample, 'sample.js')
+        self.assertIn("document.removeEventListener('keydown', this._keydownHandler)", cleanup_body)
+        self.assertIn('this._keydownHandler = null', cleanup_body)
 
     def _cleanup_body(self, text: str, filename: str) -> str:
         cleanup_parts = []
