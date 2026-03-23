@@ -294,6 +294,26 @@ function settingsPage() {
       return [];
     },
 
+    configFieldValue(section, field) {
+      var sectionMeta = this.configSchema && this.configSchema[section];
+      if (sectionMeta && sectionMeta.root_level) {
+        return this.configValues ? this.configValues[field] : undefined;
+      }
+      return this.configValues && this.configValues[section]
+        ? this.configValues[section][field]
+        : undefined;
+    },
+
+    setConfigFieldValue(section, field, value) {
+      var sectionMeta = this.configSchema && this.configSchema[section];
+      if (sectionMeta && sectionMeta.root_level) {
+        this.configValues[field] = value;
+        return;
+      }
+      this.configValues[section] = this.configValues[section] || {};
+      this.configValues[section][field] = value;
+    },
+
     isConfigDirty(section, field) {
       return this.configDirty[section + '.' + field] === true;
     },

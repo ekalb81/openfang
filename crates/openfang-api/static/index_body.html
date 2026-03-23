@@ -3478,31 +3478,31 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                             <template x-if="field.type === 'boolean'">
                               <label class="form-checkbox" style="margin:0">
                                 <input type="checkbox"
-                                  :checked="configValues[section] && configValues[section][field.name]"
-                                  @change="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.checked; markConfigDirty(section, field.name)">
+                                  :checked="configFieldValue(section, field.name)"
+                                  @change="setConfigFieldValue(section, field.name, $event.target.checked); markConfigDirty(section, field.name)">
                               </label>
                             </template>
                             <template x-if="field.type === 'number'">
                               <input class="form-input" type="number" style="width:120px"
-                                :value="configValues[section] && configValues[section][field.name]"
-                                @input="configValues[section] = configValues[section] || {}; configValues[section][field.name] = Number($event.target.value); markConfigDirty(section, field.name)">
+                                :value="configFieldValue(section, field.name)"
+                                @input="setConfigFieldValue(section, field.name, Number($event.target.value)); markConfigDirty(section, field.name)">
                             </template>
                             <template x-if="field.type === 'select' && field.options">
                               <select class="form-select" style="width:180px"
-                                :value="configValues[section] && configValues[section][field.name]"
-                                @change="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.value; markConfigDirty(section, field.name)">
+                                :value="configFieldValue(section, field.name)"
+                                @change="setConfigFieldValue(section, field.name, $event.target.value); markConfigDirty(section, field.name)">
                                 <template x-for="opt in field.options" :key="opt">
-                                  <option :value="opt" x-text="opt" :selected="configValues[section] && configValues[section][field.name] === opt"></option>
+                                  <option :value="opt" x-text="opt" :selected="configFieldValue(section, field.name) === opt"></option>
                                 </template>
                               </select>
                             </template>
                             <template x-if="!field.type || field.type === 'string'">
                               <input class="form-input" type="text" style="flex:1"
-                                :value="configValues[section] && configValues[section][field.name]"
-                                @input="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.value; markConfigDirty(section, field.name)">
+                                :value="configFieldValue(section, field.name)"
+                                @input="setConfigFieldValue(section, field.name, $event.target.value); markConfigDirty(section, field.name)">
                             </template>
                             <button class="btn btn-primary btn-sm" x-show="isConfigDirty(section, field.name)"
-                              @click="saveConfigField(section, field.name, configValues[section] && configValues[section][field.name])"
+                              @click="saveConfigField(section, field.name, configFieldValue(section, field.name))"
                               :disabled="configSaving[section + '.' + field.name]">
                               <span x-show="!configSaving[section + '.' + field.name]">Save</span>
                               <span x-show="configSaving[section + '.' + field.name]" class="spinner" style="width:12px;height:12px;border-width:2px"></span>
