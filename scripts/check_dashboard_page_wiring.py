@@ -48,7 +48,7 @@ IGNORED_CALLEES = {"if", "Number", "String", "Boolean", "Object", "Array", "Date
 ROUTE_TEMPLATE_RE = re.compile(r'<template\b[^>]*x-if\s*=\s*"page === \'([^\']+)\'"')
 ROUTE_EXPR_RE = re.compile(r'(?:x-(?:show|if|text)|(?:x-bind:|:)[A-Za-z0-9_.:-]+)\s*=\s*"([^"]+)"')
 XHTML_RE = re.compile(r'x-html\s*=\s*"([^"]+)"')
-XMODEL_RE = re.compile(r'x-model\s*=\s*"([^"]+)"')
+XMODEL_RE = re.compile(r'x-model(?:\.[A-Za-z0-9_-]+)*\s*=\s*"([^"]+)"')
 XFOR_RE = re.compile(r'x-for\s*=\s*"([^"]+)"')
 STATE_LIKE_IDENTIFIER_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*(?:Loading|Error))\b')
 SIMPLE_MEMBER_EXPR_RE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\b(?:\s*(?:[.[(]|$))')

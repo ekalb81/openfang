@@ -159,11 +159,12 @@ class DashboardPageWiringTests(unittest.TestCase):
     def test_xmodel_xfor_and_xhtml_regexes_capture_route_bindings(self):
         line = (
             '<input x-model="formValues[field.key]">'
+            '<input x-model.number="retryCount">'
             '<template x-for="session in filteredSessions">'
             '<div x-html="highlightSearch(renderMarkdown(msg.text))"></div>'
             '<button @click="refreshRuntime()">Refresh</button>'
         )
-        self.assertEqual(module.XMODEL_RE.findall(line), ['formValues[field.key]'])
+        self.assertEqual(module.XMODEL_RE.findall(line), ['formValues[field.key]', 'retryCount'])
         self.assertEqual(module.XFOR_RE.findall(line), ['session in filteredSessions'])
         self.assertEqual(module.XHTML_RE.findall(line), ['highlightSearch(renderMarkdown(msg.text))'])
 
@@ -395,6 +396,51 @@ class DashboardPageWiringTests(unittest.TestCase):
                     </template>
                     <div x-data="childWidget()">
                       <template x-for="field in missingChildHelper(fields)" :key="field.name"></template>
+                    </div>
+                  </section>
+                </template>
+                """,
+                encoding='utf-8',
+            )
+
+            old_repo_root = module.REPO_ROOT
+            old_pages_dir = module.PAGES_DIR
+            old_index_body = module.INDEX_BODY
+            try:
+                module.REPO_ROOT = root
+                module.PAGES_DIR = pages_dir
+                module.INDEX_BODY = root / 'crates/openfang-api/static/index_body.html'
+                self.assertEqual(module.main(), 1)
+            finally:
+                module.REPO_ROOT = old_repo_root
+                module.PAGES_DIR = old_pages_dir
+                module.INDEX_BODY = old_index_body
+
+    def test_main_flags_route_scoped_xmodel_modifiers_outside_nested_xdata(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pages_dir = root / 'crates/openfang-api/static/js/pages'
+            pages_dir.mkdir(parents=True)
+            (pages_dir / 'settings.js').write_text(
+                """
+                function settingsPage() {
+                    return {
+                        loading: false,
+                        loadError: '',
+                        customModelContext: 0,
+                    };
+                }
+                """,
+                encoding='utf-8',
+            )
+            (root / 'crates/openfang-api/static/index_body.html').write_text(
+                """
+                <template x-if="page === 'settings'">
+                  <section x-data="settingsPage()">
+                    <input x-model.number="customModelCntxt">
+                    <div x-data="childWidget()">
+                      <input x-model.number="missingChildField">
                     </div>
                   </section>
                 </template>
