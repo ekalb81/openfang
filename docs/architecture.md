@@ -36,7 +36,7 @@ openfang-api            REST/WS/SSE API server (Axum 0.8), 76 endpoints
 openfang-kernel         Kernel: assembles all subsystems, workflow engine, RBAC, metering
     |
     +-- openfang-runtime    Agent loop, 3 LLM drivers, 23 tools, WASM sandbox, MCP, A2A
-    +-- openfang-channels   40 channel adapters, bridge, formatter, rate limiter
+    +-- openfang-channels   42 channel adapters, bridge, formatter, rate limiter
     +-- openfang-wire       OFP peer-to-peer networking with HMAC-SHA256 auth
     +-- openfang-migrate    Migration engine (OpenClaw YAML->TOML)
     +-- openfang-skills     60 bundled skills, FangHub marketplace, ClawHub client

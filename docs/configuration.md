@@ -413,7 +413,7 @@ readability = true
 
 ### `[channels]`
 
-All 40 channel adapters are configured under `[channels.<name>]`. Each channel is `Option<T>` -- omitting the section disables the adapter entirely. Including the section header (even empty) enables it with default values.
+All 42 channel adapters are configured under `[channels.<name>]`. Each channel is `Option<T>` -- omitting the section disables the adapter entirely. Including the section header (even empty) enables it with default values.
 
 Every channel config includes a `default_agent` field (optional agent name to route messages to) and an `overrides` sub-table (see [Channel Overrides](#channel-overrides)).
 

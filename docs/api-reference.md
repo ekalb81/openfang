@@ -540,7 +540,7 @@ Delete a key-value pair.
 
 ### GET /api/channels
 
-List configured channel adapters and their status. Supports 40 channel adapters including Telegram, Discord, Slack, WhatsApp, Matrix, Email, Teams, Mattermost, IRC, Google Chat, Twitch, Rocket.Chat, Zulip, XMPP, LINE, Viber, Messenger, Reddit, Mastodon, Bluesky, and more.
+List configured channel adapters and their status. Supports 42 channel adapters including Telegram, Discord, Slack, WhatsApp, Matrix, Email, Teams, Mattermost, IRC, Google Chat, Twitch, Rocket.Chat, Zulip, XMPP, LINE, Viber, Messenger, Reddit, Mastodon, Bluesky, and more.
 
 **Response** `200 OK`:
 
