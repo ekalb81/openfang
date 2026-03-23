@@ -64,6 +64,10 @@ def direct_method_calls(expr: str) -> list[str]:
     return [method for method in METHOD_CALL_RE.findall(expr) if method not in {"if"}]
 
 
+def undefined_method_calls(expr: str, defined_methods: set[str]) -> list[str]:
+    return [method for method in direct_method_calls(expr) if method not in defined_methods]
+
+
 def defined_members_in(js: str) -> set[str]:
     return defined_methods_in(js) | set(GETTER_DEF_RE.findall(js)) | set(STATE_DEF_RE.findall(js))
 
@@ -181,11 +185,10 @@ def main() -> int:
             if not xinit:
                 continue
 
-            for method_name in direct_method_calls(xinit.group(1)):
-                if method_name not in defined_methods:
-                    errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-init references {method_name}() but {component_name} does not define it"
-                    )
+            for method_name in undefined_method_calls(xinit.group(1), defined_methods):
+                errors.append(
+                    f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-init references {method_name}() but {component_name} does not define it"
+                )
 
         route_name = page_file.stem
         route_line_entries = route_lines.get(route_name, [])
@@ -203,6 +206,13 @@ def main() -> int:
             if nested_xdata_depth > 0:
                 nested_xdata_depth += html_tag_depth_delta(line)
                 continue
+
+            xinit = XINIT_RE.search(line)
+            if xinit and line_number not in route_root_lines:
+                for method_name in undefined_method_calls(xinit.group(1), defined_methods):
+                    errors.append(
+                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-init references {method_name}() but {component_name} does not define it"
+                    )
 
             for expr_match in ROUTE_EXPR_RE.finditer(line):
                 expr = expr_match.group(1)
