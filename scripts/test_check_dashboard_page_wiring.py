@@ -163,17 +163,25 @@ class DashboardPageWiringTests(unittest.TestCase):
         self.assertIsNone(module.direct_member_root("loading ? 'yes' : 'no'"))
         self.assertIsNone(module.direct_member_root('$event.target.value'))
 
-    def test_xmodel_xfor_and_xhtml_regexes_capture_route_bindings(self):
+    def test_top_level_expr_parts_splits_semicolon_delimited_effects(self):
+        self.assertEqual(
+            module.top_level_expr_parts('nodes.length; selectedNode; scheduleRender(); !loadError'),
+            ['nodes.length', 'selectedNode', 'scheduleRender()', '!loadError'],
+        )
+
+    def test_xmodel_xfor_xhtml_and_xeffect_regexes_capture_route_bindings(self):
         line = (
             '<input x-model="formValues[field.key]">'
             '<input x-model.number="retryCount">'
             '<template x-for="session in filteredSessions">'
             '<div x-html="highlightSearch(renderMarkdown(msg.text))"></div>'
+            '<g x-effect="nodes.length; scheduleRender()"></g>'
             '<button @click="refreshRuntime()">Refresh</button>'
         )
         self.assertEqual(module.XMODEL_RE.findall(line), ['formValues[field.key]', 'retryCount'])
         self.assertEqual(module.XFOR_RE.findall(line), ['session in filteredSessions'])
         self.assertEqual(module.XHTML_RE.findall(line), ['highlightSearch(renderMarkdown(msg.text))'])
+        self.assertEqual(module.XEFFECT_RE.findall(line), ['nodes.length; scheduleRender()'])
 
     def test_undefined_method_calls_detect_xfor_helper_typos(self):
         self.assertEqual(
@@ -512,6 +520,61 @@ class DashboardPageWiringTests(unittest.TestCase):
                 module.REPO_ROOT = old_repo_root
                 module.PAGES_DIR = old_pages_dir
                 module.INDEX_BODY = old_index_body
+
+    def test_main_flags_route_scoped_xeffect_typos(self):
+        import tempfile
+        import io
+        from contextlib import redirect_stderr
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pages_dir = root / 'crates/openfang-api/static/js/pages'
+            pages_dir.mkdir(parents=True)
+            (pages_dir / 'workflow.js').write_text(
+                """
+                function workflowPage() {
+                    return {
+                        nodes: [],
+                        connections: [],
+                        selectedNode: null,
+                        selectedConnection: null,
+                        connecting: false,
+                        connectPreview: null,
+                        scheduleRender() {},
+                    };
+                }
+                """,
+                encoding='utf-8',
+            )
+            (root / 'crates/openfang-api/static/index_body.html').write_text(
+                """
+                <template x-if="page === 'workflow'">
+                  <section x-data="workflowPage()">
+                    <g x-effect="nodes.length; connectons.length; scheduleRnder()"></g>
+                  </section>
+                </template>
+                """,
+                encoding='utf-8',
+            )
+
+            old_repo_root = module.REPO_ROOT
+            old_pages_dir = module.PAGES_DIR
+            old_index_body = module.INDEX_BODY
+            stderr = io.StringIO()
+            try:
+                module.REPO_ROOT = root
+                module.PAGES_DIR = pages_dir
+                module.INDEX_BODY = root / 'crates/openfang-api/static/index_body.html'
+                with redirect_stderr(stderr):
+                    self.assertEqual(module.main(), 1)
+            finally:
+                module.REPO_ROOT = old_repo_root
+                module.PAGES_DIR = old_pages_dir
+                module.INDEX_BODY = old_index_body
+
+            output = stderr.getvalue()
+            self.assertIn('route x-effect references connectons but workflowPage does not define it', output)
+            self.assertIn('route x-effect references scheduleRnder() but workflowPage does not define it', output)
 
 
 if __name__ == '__main__':

@@ -48,6 +48,7 @@ IGNORED_CALLEES = {"if", "Number", "String", "Boolean", "Object", "Array", "Date
 ROUTE_TEMPLATE_RE = re.compile(r'<template\b[^>]*x-if\s*=\s*"page === \'([^\']+)\'"')
 ROUTE_EXPR_RE = re.compile(r'(?:x-(?:show|if|text)|(?:x-bind:|:)[A-Za-z0-9_.:-]+)\s*=\s*"([^"]+)"')
 XHTML_RE = re.compile(r'x-html\s*=\s*"([^"]+)"')
+XEFFECT_RE = re.compile(r'x-effect\s*=\s*"([^"]+)"')
 XMODEL_RE = re.compile(r'x-model(?:\.[A-Za-z0-9_-]+)*\s*=\s*"([^"]+)"')
 XFOR_RE = re.compile(r'x-for\s*=\s*"([^"]+)"')
 STATE_LIKE_IDENTIFIER_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*(?:Loading|Error))\b')
@@ -123,6 +124,10 @@ def direct_member_root(expr: str) -> str | None:
     if root in IGNORED_MEMBER_ROOTS:
         return None
     return root
+
+
+def top_level_expr_parts(expr: str) -> list[str]:
+    return [part.strip() for part in expr.split(";") if part.strip()]
 
 
 def collect_route_lines(index_lines: list[str]) -> dict[str, list[tuple[int, str]]]:
@@ -256,6 +261,19 @@ def main() -> int:
                     errors.append(
                         f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-html references {method_name}() but {component_name} does not define it"
                     )
+
+            for xeffect_match in XEFFECT_RE.finditer(line):
+                expr = xeffect_match.group(1)
+                for method_name in undefined_method_calls(expr, defined_methods):
+                    errors.append(
+                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-effect references {method_name}() but {component_name} does not define it"
+                    )
+                for part in top_level_expr_parts(expr):
+                    root = direct_member_root(part)
+                    if root and root not in defined_members:
+                        errors.append(
+                            f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-effect references {root} but {component_name} does not define it"
+                        )
 
             for expr_match in ROUTE_EXPR_RE.finditer(line):
                 expr = expr_match.group(1)
