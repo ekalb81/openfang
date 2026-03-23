@@ -90,6 +90,35 @@ class DashboardPageWiringTests(unittest.TestCase):
             set(),
         )
 
+    def test_expression_member_roots_ignores_calls_and_member_access_suffixes(self):
+        self.assertEqual(
+            module.expression_member_roots('selectedSession && selectedSession.agent_name && formatLabel(selectedSession)'),
+            {'selectedSession'},
+        )
+        self.assertEqual(
+            module.expression_member_roots("toolIcon('hammer') || customState"),
+            {'customState'},
+        )
+        self.assertEqual(
+            module.expression_member_roots("{ active: filterStatus === 'all', done: step > 1 }"),
+            {'filterStatus', 'step'},
+        )
+
+    def test_undefined_expression_member_roots_flags_compound_state_typos(self):
+        defined_members = {'selectedSession', 'loading', 'loadError'}
+        self.assertEqual(
+            module.undefined_expression_member_roots('selectedSesion && !loading && !loadError', defined_members),
+            {'selectedSesion'},
+        )
+        self.assertEqual(
+            module.undefined_expression_member_roots('selectedSession && !loading', defined_members),
+            set(),
+        )
+        self.assertEqual(
+            module.undefined_expression_member_roots('idx * 50 + 30', defined_members),
+            set(),
+        )
+
     def test_route_expr_re_matches_text_and_bound_attributes(self):
         line = (
             '<button :disabled="settingsLoading || saveError" '
@@ -562,6 +591,7 @@ class DashboardPageWiringTests(unittest.TestCase):
                   <section x-data="sessionsPage()">
                     <div x-show="selectedSesion"></div>
                     <div x-text="selectedSesion.agent_name"></div>
+                    <div x-show="selectedSesion && selectedSession.agent_name"></div>
                     <div x-data="childWidget()">
                       <div x-text="missingChildState.name"></div>
                     </div>

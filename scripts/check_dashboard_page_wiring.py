@@ -45,6 +45,20 @@ BUTTON_CLICK_RE = re.compile(r'<button\b[^>]*@click\s*=\s*"([^"]+)"[^>]*>(.*?)</
 EVENT_ATTR_RE = re.compile(r'@[A-Za-z0-9_.:-]+\s*=\s*"([^"]+)"')
 STRING_LITERAL_RE = re.compile(r"('(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\")")
 IGNORED_CALLEES = {"if", "Number", "String", "Boolean", "Object", "Array", "Date", "Math", "JSON", "parseInt", "parseFloat", "encodeURIComponent", "decodeURIComponent"}
+IGNORED_MEMBER_IDENTIFIERS = IGNORED_CALLEES | {
+    "await",
+    "const",
+    "else",
+    "for",
+    "in",
+    "instanceof",
+    "let",
+    "new",
+    "return",
+    "this",
+    "typeof",
+    "void",
+}
 ROUTE_TEMPLATE_RE = re.compile(r'<template\b[^>]*x-if\s*=\s*"page === \'([^\']+)\'"')
 ROUTE_EXPR_RE = re.compile(r'(?:x-(?:show|if|text)|(?:x-bind:|:)[A-Za-z0-9_.:-]+)\s*=\s*"([^"]+)"')
 XHTML_RE = re.compile(r'x-html\s*=\s*"([^"]+)"')
@@ -52,6 +66,9 @@ XEFFECT_RE = re.compile(r'x-effect\s*=\s*"([^"]+)"')
 XMODEL_RE = re.compile(r'x-model(?:\.[A-Za-z0-9_-]+)*\s*=\s*"([^"]+)"')
 XFOR_RE = re.compile(r'x-for\s*=\s*"([^"]+)"')
 STATE_LIKE_IDENTIFIER_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*(?:Loading|Error))\b')
+IDENTIFIER_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*)\b')
+OBJECT_KEY_RE = re.compile(r'([,{]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:)')
+COMPOUND_MEMBER_EXPR_RE = re.compile(r'&&|\|\||\?\?|===|!==|==|!=|<=|>=|<|>|\?')
 SIMPLE_MEMBER_EXPR_RE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\b(?:\s*(?:[.[(]|$))')
 DIRECT_MEMBER_EXPR_RE = re.compile(
     r'^\s*!*\s*([A-Za-z_][A-Za-z0-9_]*)\b(?:\s*(?:\.[A-Za-z_][A-Za-z0-9_]*|\[[^\]]+\]))*\s*$'
@@ -96,6 +113,31 @@ def undefined_state_like_identifiers(expr: str, defined_members: set[str]) -> se
         identifier
         for identifier in STATE_LIKE_IDENTIFIER_RE.findall(expr)
         if identifier not in defined_members
+    }
+
+
+def expression_member_roots(expr: str) -> set[str]:
+    scrubbed = STRING_LITERAL_RE.sub("", expr)
+    scrubbed = OBJECT_KEY_RE.sub(r"\1\3", scrubbed)
+    roots: set[str] = set()
+    for match in IDENTIFIER_RE.finditer(scrubbed):
+        root = match.group(1)
+        if root in IGNORED_MEMBER_IDENTIFIERS or root in GLOBAL_TEMPLATE_HELPERS:
+            continue
+        tail = scrubbed[match.end():].lstrip()
+        if tail.startswith("("):
+            continue
+        roots.add(root)
+    return roots
+
+
+def undefined_expression_member_roots(expr: str, defined_members: set[str]) -> set[str]:
+    if not COMPOUND_MEMBER_EXPR_RE.search(STRING_LITERAL_RE.sub("", expr)):
+        return set()
+    return {
+        root
+        for root in expression_member_roots(expr)
+        if root not in defined_members and root not in IGNORED_MEMBER_ROOTS
     }
 
 
@@ -288,8 +330,10 @@ def main() -> int:
 
                     for expr_match in ROUTE_EXPR_RE.finditer(line):
                         expr = expr_match.group(1)
-                        undefined_identifiers = sorted(undefined_state_like_identifiers(expr, defined_members))
-                        for identifier in undefined_identifiers:
+                        undefined_identifiers = set(undefined_state_like_identifiers(expr, defined_members))
+                        if xfor_depth <= 0:
+                            undefined_identifiers.update(undefined_expression_member_roots(expr, defined_members))
+                        for identifier in sorted(undefined_identifiers):
                             errors.append(
                                 f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route expression references {identifier} but {component_name} does not define it"
                             )
