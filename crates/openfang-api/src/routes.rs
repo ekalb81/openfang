@@ -9650,6 +9650,58 @@ fn escape_secret_env_value(value: &str) -> String {
     escaped
 }
 
+fn write_secret_env_file_atomically(
+    path: &std::path::Path,
+    contents: &str,
+) -> Result<(), std::io::Error> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Missing secrets.env file name",
+            )
+        })?;
+    let tmp_path = path.with_file_name(format!(".{file_name}.tmp-{}", uuid::Uuid::new_v4()));
+
+    let write_result = (|| -> Result<(), std::io::Error> {
+        #[cfg(unix)]
+        {
+            use std::fs::OpenOptions;
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&tmp_path)?;
+            file.write_all(contents.as_bytes())?;
+            file.sync_all()?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            use std::io::Write;
+
+            let mut file = std::fs::File::create(&tmp_path)?;
+            file.write_all(contents.as_bytes())?;
+            file.sync_all()?;
+        }
+
+        std::fs::rename(&tmp_path, path)?;
+        Ok(())
+    })();
+
+    if write_result.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+
+    write_result
+}
+
 /// Write or update a key in the secrets.env file.
 /// File format: one `KEY=value` per line. Existing keys are overwritten.
 fn write_secret_env(path: &std::path::Path, key: &str, value: &str) -> Result<(), std::io::Error> {
@@ -9680,14 +9732,7 @@ fn write_secret_env(path: &std::path::Path, key: &str, value: &str) -> Result<()
         std::fs::create_dir_all(parent)?;
     }
 
-    std::fs::write(path, lines.join("\n") + "\n")?;
-
-    // SECURITY: Restrict file permissions on Unix
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-    }
+    write_secret_env_file_atomically(path, &(lines.join("\n") + "\n"))?;
 
     Ok(())
 }
@@ -9704,7 +9749,7 @@ fn remove_secret_env(path: &std::path::Path, key: &str) -> Result<(), std::io::E
         .map(|l| l.to_string())
         .collect();
 
-    std::fs::write(path, lines.join("\n") + "\n")?;
+    write_secret_env_file_atomically(path, &(lines.join("\n") + "\n"))?;
 
     Ok(())
 }
@@ -13579,5 +13624,25 @@ mod channel_config_tests {
 
         let contents = std::fs::read_to_string(&path).unwrap();
         assert_eq!(contents, "TOKEN=old\nTOKEN_SUFFIX=keep\n");
+    }
+
+    #[test]
+    fn test_write_secret_env_file_atomically_replaces_contents_without_temp_leaks() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("secrets.env");
+
+        write_secret_env(&path, "TOKEN", "fresh").unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(contents, "TOKEN=\"fresh\"\n");
+        assert_eq!(
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|name| name.contains(".tmp-"))
+                .count(),
+            0
+        );
     }
 }
