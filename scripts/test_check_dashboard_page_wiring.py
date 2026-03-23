@@ -145,6 +145,26 @@ class DashboardPageWiringTests(unittest.TestCase):
         self.assertEqual(module.html_tag_depth_delta('</div>'), -1)
         self.assertEqual(module.html_tag_depth_delta('<input type="text">'), 0)
 
+    def test_collect_component_block_lines_returns_nested_component_scope(self):
+        index_lines = [
+            '<template x-if="page === \'workflows\'">',
+            '  <section x-data="workflowsPage()">',
+            '    <div x-data="workflowBuilder()">',
+            '      <button @click="save()">Save</button>',
+            '    </div>',
+            '  </section>',
+            '</template>',
+        ]
+
+        self.assertEqual(
+            module.collect_component_block_lines(index_lines, 3),
+            [
+                (3, '    <div x-data="workflowBuilder()">'),
+                (4, '      <button @click="save()">Save</button>'),
+                (5, '    </div>'),
+            ],
+        )
+
     def test_simple_member_root_handles_simple_xfor_sources(self):
         self.assertEqual(module.simple_member_root('filteredSessions'), 'filteredSessions')
         self.assertEqual(module.simple_member_root('advancedFields()'), 'advancedFields')
@@ -239,6 +259,49 @@ class DashboardPageWiringTests(unittest.TestCase):
                 module.PAGES_DIR = pages_dir
                 module.INDEX_BODY = root / 'crates/openfang-api/static/index_body.html'
                 self.assertEqual(module.main(), 0)
+            finally:
+                module.REPO_ROOT = old_repo_root
+                module.PAGES_DIR = old_pages_dir
+                module.INDEX_BODY = old_index_body
+
+    def test_main_flags_nested_component_route_typo_when_route_name_differs_from_file_stem(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pages_dir = root / 'crates/openfang-api/static/js/pages'
+            pages_dir.mkdir(parents=True)
+            (pages_dir / 'workflow-builder.js').write_text(
+                """
+                function workflowBuilder() {
+                    return {
+                        nodes: [],
+                        scheduleRender() {},
+                    };
+                }
+                """,
+                encoding='utf-8',
+            )
+            (root / 'crates/openfang-api/static/index_body.html').write_text(
+                """
+                <template x-if=\"page === 'workflows'\">
+                  <section x-data=\"workflowsPage()\">
+                    <div x-data=\"workflowBuilder()\">
+                      <svg x-effect=\"connectons.length; scheduleRender()\"></svg>
+                    </div>
+                  </section>
+                </template>
+                """,
+                encoding='utf-8',
+            )
+
+            old_repo_root = module.REPO_ROOT
+            old_pages_dir = module.PAGES_DIR
+            old_index_body = module.INDEX_BODY
+            try:
+                module.REPO_ROOT = root
+                module.PAGES_DIR = pages_dir
+                module.INDEX_BODY = root / 'crates/openfang-api/static/index_body.html'
+                self.assertEqual(module.main(), 1)
             finally:
                 module.REPO_ROOT = old_repo_root
                 module.PAGES_DIR = old_pages_dir

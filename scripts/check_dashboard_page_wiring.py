@@ -21,8 +21,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PAGES_DIR = REPO_ROOT / "crates/openfang-api/static/js/pages"
 INDEX_BODY = REPO_ROOT / "crates/openfang-api/static/index_body.html"
 
-FACTORY_RE = re.compile(r"function\s+([A-Za-z0-9_]+Page)\s*\(")
-ALPINE_DATA_RE = re.compile(r"Alpine\.data\(\s*['\"]([A-Za-z0-9_]+Page)['\"]")
+FACTORY_RE = re.compile(r"function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+ALPINE_DATA_RE = re.compile(r"Alpine\.data\(\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]")
 ROUTE_LEAVE_HOOKS = {
     "destroy": re.compile(r"\bdestroy\s*(?:\(|:)"),
     "stopSSE": re.compile(r"\bstopSSE\s*(?:\(|:)"),
@@ -153,6 +153,20 @@ def collect_route_lines(index_lines: list[str]) -> dict[str, list[tuple[int, str
     return route_lines
 
 
+def collect_component_block_lines(index_lines: list[str], root_line_number: int) -> list[tuple[int, str]]:
+    block_lines: list[tuple[int, str]] = []
+    depth = 0
+
+    for line_number in range(root_line_number, len(index_lines) + 1):
+        line = index_lines[line_number - 1]
+        block_lines.append((line_number, line))
+        depth += html_tag_depth_delta(line)
+        if depth <= 0:
+            break
+
+    return block_lines
+
+
 def html_tag_depth_delta(line: str) -> int:
     depth_delta = 0
     for match in HTML_TAG_RE.finditer(line):
@@ -184,148 +198,146 @@ def main() -> int:
         xdata = XDATA_RE.search(line)
         if xdata:
             route_tags.append((xdata.group(1), line, line_number))
-    route_lines = collect_route_lines(index_lines)
-
     errors: list[str] = []
 
     for page_file in sorted(PAGES_DIR.glob("*.js")):
         js = page_file.read_text(encoding="utf-8")
-        factory_match = FACTORY_RE.search(js)
-        alpine_data_match = ALPINE_DATA_RE.search(js)
-        if not factory_match and not alpine_data_match:
-            continue
-
-        if factory_match:
-            component_name = factory_match.group(1)
-            expected_xdata_values = [f"{component_name}()"]
-        else:
-            component_name = alpine_data_match.group(1)
-            expected_xdata_values = [f"{component_name}()"]
-
-        matching_tags = [tag for tag in route_tags if tag[0] in expected_xdata_values]
-        expected_display = " or ".join(f'x-data="{value}"' for value in expected_xdata_values)
-        if not matching_tags:
-            errors.append(
-                f"{page_file.relative_to(REPO_ROOT)}: missing {expected_display} route binding in {INDEX_BODY.relative_to(REPO_ROOT)}"
-            )
+        component_names = []
+        for name in FACTORY_RE.findall(js):
+            if name.endswith("Page") or any(tag[0] == f"{name}()" for tag in route_tags):
+                component_names.append(name)
+        for name in ALPINE_DATA_RE.findall(js):
+            if name not in component_names:
+                component_names.append(name)
+        if not component_names:
             continue
 
         defined_methods = defined_methods_in(js)
         defined_members = defined_members_in(js)
 
-        for _, attrs, line_number in matching_tags:
-            xinit = XINIT_RE.search(attrs)
-            if not xinit:
-                continue
-
-            for method_name in undefined_method_calls(xinit.group(1), defined_methods):
+        for component_name in component_names:
+            expected_xdata_values = [f"{component_name}()"]
+            matching_tags = [tag for tag in route_tags if tag[0] in expected_xdata_values]
+            expected_display = " or ".join(f'x-data="{value}"' for value in expected_xdata_values)
+            if not matching_tags:
                 errors.append(
-                    f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-init references {method_name}() but {component_name} does not define it"
+                    f"{page_file.relative_to(REPO_ROOT)}: missing {expected_display} route binding in {INDEX_BODY.relative_to(REPO_ROOT)}"
                 )
-
-        route_name = page_file.stem
-        route_line_entries = route_lines.get(route_name, [])
-        route_root_lines = {line_number for _, _, line_number in matching_tags}
-        nested_xdata_depth = 0
-        xfor_depth = 0
-
-        for line_number, line in route_line_entries:
-            line_starts_nested_scope = 'x-data' in line and line_number not in route_root_lines
-            if line_starts_nested_scope:
-                nested_xdata_depth += max(1, html_tag_depth_delta(line))
                 continue
 
-            if nested_xdata_depth > 0:
-                nested_xdata_depth += html_tag_depth_delta(line)
-                continue
+            for _, attrs, line_number in matching_tags:
+                xinit = XINIT_RE.search(attrs)
+                if not xinit:
+                    continue
 
-            line_starts_xfor_scope = bool(XFOR_RE.search(line))
-            if line_starts_xfor_scope:
-                xfor_depth += max(1, html_tag_depth_delta(line))
-
-            xinit = XINIT_RE.search(line)
-            if xinit and line_number not in route_root_lines:
                 for method_name in undefined_method_calls(xinit.group(1), defined_methods):
                     errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-init references {method_name}() but {component_name} does not define it"
+                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-init references {method_name}() but {component_name} does not define it"
                     )
 
-            for event_match in EVENT_ATTR_RE.finditer(line):
-                for method_name in undefined_method_calls(event_match.group(1), defined_methods):
-                    errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route event handler references {method_name}() but {component_name} does not define it"
-                    )
+            for _, _, root_line_number in matching_tags:
+                route_line_entries = collect_component_block_lines(index_lines, root_line_number)
+                nested_xdata_depth = 0
+                xfor_depth = 0
 
-            for xhtml_match in XHTML_RE.finditer(line):
-                for method_name in undefined_method_calls(xhtml_match.group(1), defined_methods):
-                    errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-html references {method_name}() but {component_name} does not define it"
-                    )
+                for line_number, line in route_line_entries:
+                    line_starts_nested_scope = 'x-data' in line and line_number != root_line_number
+                    if line_starts_nested_scope:
+                        nested_xdata_depth += max(1, html_tag_depth_delta(line))
+                        continue
 
-            for xeffect_match in XEFFECT_RE.finditer(line):
-                expr = xeffect_match.group(1)
-                for method_name in undefined_method_calls(expr, defined_methods):
-                    errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-effect references {method_name}() but {component_name} does not define it"
-                    )
-                for part in top_level_expr_parts(expr):
-                    root = direct_member_root(part)
-                    if root and root not in defined_members:
-                        errors.append(
-                            f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-effect references {root} but {component_name} does not define it"
+                    if nested_xdata_depth > 0:
+                        nested_xdata_depth += html_tag_depth_delta(line)
+                        continue
+
+                    line_starts_xfor_scope = bool(XFOR_RE.search(line))
+                    if line_starts_xfor_scope:
+                        xfor_depth += max(1, html_tag_depth_delta(line))
+
+                    xinit = XINIT_RE.search(line)
+                    if xinit and line_number != root_line_number:
+                        for method_name in undefined_method_calls(xinit.group(1), defined_methods):
+                            errors.append(
+                                f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-init references {method_name}() but {component_name} does not define it"
+                            )
+
+                    for event_match in EVENT_ATTR_RE.finditer(line):
+                        for method_name in undefined_method_calls(event_match.group(1), defined_methods):
+                            errors.append(
+                                f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route event handler references {method_name}() but {component_name} does not define it"
+                            )
+
+                    for xhtml_match in XHTML_RE.finditer(line):
+                        for method_name in undefined_method_calls(xhtml_match.group(1), defined_methods):
+                            errors.append(
+                                f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-html references {method_name}() but {component_name} does not define it"
+                            )
+
+                    for xeffect_match in XEFFECT_RE.finditer(line):
+                        expr = xeffect_match.group(1)
+                        for method_name in undefined_method_calls(expr, defined_methods):
+                            errors.append(
+                                f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-effect references {method_name}() but {component_name} does not define it"
+                            )
+                        for part in top_level_expr_parts(expr):
+                            root = direct_member_root(part)
+                            if root and root not in defined_members:
+                                errors.append(
+                                    f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route x-effect references {root} but {component_name} does not define it"
+                                )
+
+                    for expr_match in ROUTE_EXPR_RE.finditer(line):
+                        expr = expr_match.group(1)
+                        undefined_identifiers = sorted(undefined_state_like_identifiers(expr, defined_members))
+                        for identifier in undefined_identifiers:
+                            errors.append(
+                                f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route expression references {identifier} but {component_name} does not define it"
+                            )
+                        if xfor_depth <= 0:
+                            root = direct_member_root(expr)
+                            if root and root not in defined_members and root not in undefined_identifiers:
+                                errors.append(
+                                    f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route expression references {root} but {component_name} does not define it"
+                                )
+
+                    if xfor_depth <= 0:
+                        for model_match in XMODEL_RE.finditer(line):
+                            root = model_member_root(model_match.group(1))
+                            if root and root not in defined_members:
+                                errors.append(
+                                    f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-model references {root} but {component_name} does not define it"
+                                )
+
+                    for for_match in XFOR_RE.finditer(line):
+                        _, _, source_expr = for_match.group(1).partition(" in ")
+                        missing_methods = undefined_method_calls(source_expr, defined_methods)
+                        for method_name in missing_methods:
+                            errors.append(
+                                f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-for source references {method_name}() but {component_name} does not define it"
+                            )
+                        root = simple_member_root(source_expr)
+                        if root and root not in defined_members and root not in missing_methods:
+                            errors.append(
+                                f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-for references {root} but {component_name} does not define it"
+                            )
+
+                    if xfor_depth > 0 and not line_starts_xfor_scope:
+                        xfor_depth += html_tag_depth_delta(line)
+
+            for hook_name, hook_re in ROUTE_LEAVE_HOOKS.items():
+                if hook_re.search(js):
+                    acceptable_hooks = (hook_name,) + ROUTE_LEAVE_FALLBACKS.get(hook_name, ())
+                    if not any(
+                        page_leave_hook_re(acceptable_hook).search(attrs)
+                        for acceptable_hook in acceptable_hooks
+                        for _, attrs, _ in matching_tags
+                    ):
+                        expected_hooks = " or ".join(
+                            f'@page-leave.window="{acceptable_hook}()"' for acceptable_hook in acceptable_hooks
                         )
-
-            for expr_match in ROUTE_EXPR_RE.finditer(line):
-                expr = expr_match.group(1)
-                undefined_identifiers = sorted(undefined_state_like_identifiers(expr, defined_members))
-                for identifier in undefined_identifiers:
-                    errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route expression references {identifier} but {component_name} does not define it"
-                    )
-                if xfor_depth <= 0:
-                    root = direct_member_root(expr)
-                    if root and root not in defined_members and root not in undefined_identifiers:
                         errors.append(
-                            f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route expression references {root} but {component_name} does not define it"
+                            f"{page_file.relative_to(REPO_ROOT)}: defines {hook_name}() but no matching {expected_display} tag wires {expected_hooks}"
                         )
-
-            for model_match in XMODEL_RE.finditer(line):
-                root = model_member_root(model_match.group(1))
-                if root and root not in defined_members:
-                    errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-model references {root} but {component_name} does not define it"
-                    )
-
-            for for_match in XFOR_RE.finditer(line):
-                _, _, source_expr = for_match.group(1).partition(" in ")
-                missing_methods = undefined_method_calls(source_expr, defined_methods)
-                for method_name in missing_methods:
-                    errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-for source references {method_name}() but {component_name} does not define it"
-                    )
-                root = simple_member_root(source_expr)
-                if root and root not in defined_members and root not in missing_methods:
-                    errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-for references {root} but {component_name} does not define it"
-                    )
-
-            if xfor_depth > 0 and not line_starts_xfor_scope:
-                xfor_depth += html_tag_depth_delta(line)
-
-        for hook_name, hook_re in ROUTE_LEAVE_HOOKS.items():
-            if hook_re.search(js):
-                acceptable_hooks = (hook_name,) + ROUTE_LEAVE_FALLBACKS.get(hook_name, ())
-                if not any(
-                    page_leave_hook_re(acceptable_hook).search(attrs)
-                    for acceptable_hook in acceptable_hooks
-                    for _, attrs, _ in matching_tags
-                ):
-                    expected_hooks = " or ".join(
-                        f'@page-leave.window="{acceptable_hook}()"' for acceptable_hook in acceptable_hooks
-                    )
-                    errors.append(
-                        f"{page_file.relative_to(REPO_ROOT)}: defines {hook_name}() but no matching {expected_display} tag wires {expected_hooks}"
-                    )
 
     if errors:
         print("Dashboard page wiring check failed:", file=sys.stderr)
