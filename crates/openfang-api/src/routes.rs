@@ -9541,7 +9541,7 @@ fn upsert_provider_url(
         std::fs::create_dir_all(parent)?;
     }
 
-    std::fs::write(config_path, toml::to_string_pretty(&doc)?)?;
+    write_text_file_atomically(config_path, &toml::to_string_pretty(&doc)?)?;
     Ok(())
 }
 
@@ -9650,7 +9650,7 @@ fn escape_secret_env_value(value: &str) -> String {
     escaped
 }
 
-fn write_secret_env_file_atomically(
+fn write_text_file_atomically(
     path: &std::path::Path,
     contents: &str,
 ) -> Result<(), std::io::Error> {
@@ -9732,7 +9732,7 @@ fn write_secret_env(path: &std::path::Path, key: &str, value: &str) -> Result<()
         std::fs::create_dir_all(parent)?;
     }
 
-    write_secret_env_file_atomically(path, &(lines.join("\n") + "\n"))?;
+    write_text_file_atomically(path, &(lines.join("\n") + "\n"))?;
 
     Ok(())
 }
@@ -9749,7 +9749,7 @@ fn remove_secret_env(path: &std::path::Path, key: &str) -> Result<(), std::io::E
         .map(|l| l.to_string())
         .collect();
 
-    write_secret_env_file_atomically(path, &(lines.join("\n") + "\n"))?;
+    write_text_file_atomically(path, &(lines.join("\n") + "\n"))?;
 
     Ok(())
 }
@@ -9822,7 +9822,7 @@ fn upsert_channel_config(
         std::fs::create_dir_all(parent)?;
     }
 
-    std::fs::write(config_path, toml::to_string_pretty(&doc)?)?;
+    write_text_file_atomically(config_path, &toml::to_string_pretty(&doc)?)?;
     Ok(())
 }
 
@@ -9850,7 +9850,7 @@ fn remove_channel_config(
         channels.remove(channel_name);
     }
 
-    std::fs::write(config_path, toml::to_string_pretty(&doc)?)?;
+    write_text_file_atomically(config_path, &toml::to_string_pretty(&doc)?)?;
     Ok(())
 }
 
@@ -13627,7 +13627,7 @@ mod channel_config_tests {
     }
 
     #[test]
-    fn test_write_secret_env_file_atomically_replaces_contents_without_temp_leaks() {
+    fn test_write_text_file_atomically_replaces_contents_without_temp_leaks() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("secrets.env");
 
@@ -13635,6 +13635,40 @@ mod channel_config_tests {
 
         let contents = std::fs::read_to_string(&path).unwrap();
         assert_eq!(contents, "TOKEN=\"fresh\"\n");
+        assert_eq!(
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|name| name.contains(".tmp-"))
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn test_upsert_channel_config_writes_atomically_without_temp_leaks() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[channels.existing]\nenabled = \"yes\"\n").unwrap();
+
+        let mut fields = HashMap::new();
+        fields.insert(
+            "token_env".to_string(),
+            ("DISCORD_BOT_TOKEN".to_string(), FieldType::String),
+        );
+        fields.insert(
+            "guild_ids".to_string(),
+            ("123, 456".to_string(), FieldType::List),
+        );
+
+        upsert_channel_config(&path, "discord", &fields).unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("[channels.existing]"));
+        assert!(contents.contains("[channels.discord]"));
+        assert!(contents.contains("token_env = \"DISCORD_BOT_TOKEN\""));
+        assert!(contents.contains("guild_ids = [\"123\", \"456\"]"));
         assert_eq!(
             std::fs::read_dir(dir.path())
                 .unwrap()
