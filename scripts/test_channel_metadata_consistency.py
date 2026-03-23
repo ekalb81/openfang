@@ -55,6 +55,15 @@ def parse_cli_channel_env_vars():
 
 
 class ChannelMetadataConsistencyTests(unittest.TestCase):
+    def test_api_and_cli_define_the_same_channel_set(self):
+        api_channels = parse_api_channel_metadata()
+        cli_channels = parse_cli_channel_env_vars()
+        self.assertEqual(
+            sorted(api_channels),
+            sorted(cli_channels),
+            "API channel metadata and CLI channel definitions drifted",
+        )
+
     def test_required_api_secret_env_vars_appear_in_channel_setup_templates(self):
         api_channels = parse_api_channel_metadata()
         missing = {
@@ -69,8 +78,7 @@ class ChannelMetadataConsistencyTests(unittest.TestCase):
         cli_channels = parse_cli_channel_env_vars()
         mismatches = {}
         for name, meta in api_channels.items():
-            cli_envs = cli_channels.get(name)
-            self.assertIsNotNone(cli_envs, f"Missing CLI channel definition for {name}")
+            cli_envs = cli_channels[name]
             if cli_envs != meta["template_env_vars"]:
                 mismatches[name] = {
                     "api_template": sorted(meta["template_env_vars"]),
