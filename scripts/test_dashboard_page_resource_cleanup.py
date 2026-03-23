@@ -6,21 +6,25 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 PAGES_DIR = REPO_ROOT / 'crates' / 'openfang-api' / 'static' / 'js' / 'pages'
 INDEX_BODY = (REPO_ROOT / 'crates' / 'openfang-api' / 'static' / 'index_body.html').read_text()
 
-RESOURCE_PAGES = {
-    'approvals.js': 'approvalsPage',
-    'channels.js': 'channelsPage',
-    'chat.js': 'chatPage',
-    'comms.js': 'commsPage',
-    'hands.js': 'handsPage',
-    'logs.js': 'logsPage',
-    'overview.js': 'overviewPage',
-    'settings.js': 'settingsPage',
-    'skills.js': 'skillsPage',
-}
-
 RESOURCE_ASSIGN_RE = re.compile(r'this\.(\w+)\s*=\s*(setInterval|setTimeout|new EventSource)')
 METHOD_START_TEMPLATE = r'(?:{name}\(\)|{name}\s*:\s*function\s*\(\))\s*\{{'
 THIS_METHOD_CALL_RE = re.compile(r'\bthis\.([A-Za-z_][A-Za-z0-9_]*)\s*\(')
+
+
+def mounted_resource_pages() -> dict[str, str]:
+    pages = {}
+    for page_file in sorted(PAGES_DIR.glob('*.js')):
+        text = page_file.read_text()
+        if not RESOURCE_ASSIGN_RE.search(text):
+            continue
+        page_name = page_file.stem.replace('-', '_')
+        component_name = ''.join(part.capitalize() if idx else part for idx, part in enumerate(page_name.split('_'))) + 'Page'
+        if f'{component_name}()"' in INDEX_BODY:
+            pages[page_file.name] = component_name
+    return pages
+
+
+RESOURCE_PAGES = mounted_resource_pages()
 
 
 class DashboardPageResourceCleanupTests(unittest.TestCase):
