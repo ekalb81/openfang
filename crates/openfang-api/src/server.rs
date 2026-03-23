@@ -791,7 +791,7 @@ pub async fn run_daemon(
     // Write daemon info file
     if let Some(info_path) = daemon_info_path {
         // Check if another daemon is already running with this PID file
-        if info_path.exists() {
+        if info_path.is_file() {
             if let Ok(existing) = std::fs::read_to_string(info_path) {
                 if let Ok(info) = serde_json::from_str::<DaemonInfo>(&existing) {
                     // PID alive AND the health endpoint responds → truly running
@@ -806,7 +806,18 @@ pub async fn run_daemon(
             }
             // Stale PID file (process dead or different process reused PID), remove it
             info!("Removing stale daemon info file");
-            let _ = std::fs::remove_file(info_path);
+            std::fs::remove_file(info_path).map_err(|e| {
+                format!(
+                    "Failed to remove stale daemon info file {}: {e}",
+                    info_path.display()
+                )
+            })?;
+        } else if info_path.exists() {
+            return Err(format!(
+                "Daemon info path exists but is not a file: {}",
+                info_path.display()
+            )
+            .into());
         }
 
         let daemon_info = DaemonInfo {
@@ -816,11 +827,15 @@ pub async fn run_daemon(
             version: env!("CARGO_PKG_VERSION").to_string(),
             platform: std::env::consts::OS.to_string(),
         };
-        if let Ok(json) = serde_json::to_string_pretty(&daemon_info) {
-            let _ = std::fs::write(info_path, json);
-            // SECURITY: Restrict daemon info file permissions (contains PID and port).
-            restrict_permissions(info_path);
-        }
+        let json = serde_json::to_string_pretty(&daemon_info)?;
+        std::fs::write(info_path, json).map_err(|e| {
+            format!(
+                "Failed to write daemon info file {}: {e}",
+                info_path.display()
+            )
+        })?;
+        // SECURITY: Restrict daemon info file permissions (contains PID and port).
+        restrict_permissions(info_path);
     }
 
     info!("OpenFang API server listening on http://{addr}");
