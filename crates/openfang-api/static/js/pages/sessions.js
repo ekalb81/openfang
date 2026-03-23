@@ -28,7 +28,11 @@ function sessionsPage() {
       try {
         var data = await OpenFangAPI.get('/api/sessions');
         var sessions = data.sessions || [];
-        var agents = Alpine.store('app').agents;
+        var appStore = null;
+        try {
+          appStore = Alpine.store('app');
+        } catch (_storeError) {}
+        var agents = (appStore && Array.isArray(appStore.agents)) ? appStore.agents : [];
         var agentMap = {};
         agents.forEach(function(a) { agentMap[a.id] = a.name; });
         sessions.forEach(function(s) {
