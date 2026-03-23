@@ -8,7 +8,16 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = REPO_ROOT / "crates/openfang-api/static"
 STATIC_JS_DIR = STATIC_DIR / "js"
 NODE_CHECK_TIMEOUT_SECONDS = 15
-INLINE_SCRIPT_RE = re.compile(r"<script\b[^>]*>(.*?)</script>", re.IGNORECASE | re.DOTALL)
+INLINE_SCRIPT_RE = re.compile(r"<script\b([^>]*)>(.*?)</script>", re.IGNORECASE | re.DOTALL)
+SCRIPT_TYPE_RE = re.compile(r"\btype\s*=\s*([\"'])(.*?)\1", re.IGNORECASE | re.DOTALL)
+JS_SCRIPT_TYPES = {
+    "",
+    "text/javascript",
+    "application/javascript",
+    "text/ecmascript",
+    "application/ecmascript",
+    "module",
+}
 
 
 def first_party_javascript_files() -> list[Path]:
@@ -29,11 +38,26 @@ def html_files() -> list[Path]:
     return sorted(path for path in STATIC_DIR.rglob("*.html") if path.is_file())
 
 
+def _is_javascript_inline_script(attrs: str) -> bool:
+    if re.search(r"\bsrc\s*=", attrs, re.IGNORECASE):
+        return False
+
+    match = SCRIPT_TYPE_RE.search(attrs)
+    if not match:
+        return True
+
+    script_type = re.sub(r"\s+", " ", match.group(2)).strip().lower()
+    return script_type in JS_SCRIPT_TYPES
+
+
 def inline_script_blocks(path: Path) -> list[tuple[int, str]]:
     html = path.read_text(encoding="utf-8")
     blocks: list[tuple[int, str]] = []
     for match in INLINE_SCRIPT_RE.finditer(html):
-        script = match.group(1).strip()
+        attrs = match.group(1) or ""
+        if not _is_javascript_inline_script(attrs):
+            continue
+        script = match.group(2).strip()
         if not script:
             continue
         start_line = html.count("\n", 0, match.start()) + 1
@@ -70,6 +94,50 @@ def node_check(path: Path) -> str | None:
 
 
 class DashboardJavaScriptSyntaxTests(unittest.TestCase):
+    def test_inline_script_blocks_skip_non_javascript_types_and_external_scripts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "index.html"
+            path.write_text(
+                """
+<!doctype html>
+<html>
+  <head>
+    <script type="application/json">{"theme":"dark"}</script>
+    <script type="importmap">{"imports":{"x":"/x.js"}}</script>
+    <script src="/static/app.js"></script>
+    <script type="module">console.log('module')</script>
+    <script>console.log('classic')</script>
+  </head>
+</html>
+""".strip(),
+                encoding="utf-8",
+            )
+
+            blocks = inline_script_blocks(path)
+
+        self.assertEqual(
+            [script for _, script in blocks],
+            ["console.log('module')", "console.log('classic')"],
+        )
+
+    def test_inline_script_blocks_accept_javascript_mime_types_case_insensitively(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "index.html"
+            path.write_text(
+                """
+<script type=" Application/JavaScript ">console.log('a')</script>
+<script type="text/ecmascript">console.log('b')</script>
+""".strip(),
+                encoding="utf-8",
+            )
+
+            blocks = inline_script_blocks(path)
+
+        self.assertEqual(
+            [script for _, script in blocks],
+            ["console.log('a')", "console.log('b')"],
+        )
+
     def test_node_check_reports_timeouts(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "hang.js"
