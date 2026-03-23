@@ -98,7 +98,16 @@ impl CronScheduler {
     /// Returns the number of jobs loaded. If the persistence file does not
     /// exist, returns `Ok(0)` without error.
     pub fn load(&self) -> OpenFangResult<usize> {
-        if !self.persist_path.exists() {
+        let metadata = match std::fs::metadata(&self.persist_path) {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) => {
+                return Err(OpenFangError::Internal(format!(
+                    "Failed to stat cron jobs: {e}"
+                )))
+            }
+        };
+        if !metadata.is_file() {
             return Ok(0);
         }
         let data = std::fs::read_to_string(&self.persist_path)
@@ -502,6 +511,18 @@ mod tests {
         // next_run should have been computed
         assert!(fetched.next_run.is_some());
         assert_eq!(sched.total_jobs(), 1);
+    }
+
+    #[test]
+    fn test_load_ignores_directory_shaped_persist_path() {
+        let (sched, tmp) = make_scheduler(100);
+        let persist_path = tmp.path().join("cron_jobs.json");
+        std::fs::create_dir_all(&persist_path).unwrap();
+
+        let loaded = sched.load().unwrap();
+
+        assert_eq!(loaded, 0);
+        assert_eq!(sched.total_jobs(), 0);
     }
 
     // -- test_remove_job ----------------------------------------------------
