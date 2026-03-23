@@ -67,6 +67,13 @@ def live_model_count() -> int:
     return text[start:].count("ModelCatalogEntry {")
 
 
+def live_alias_count() -> int:
+    text = MODEL_CATALOG_RS.read_text(encoding="utf-8")
+    start = text.index("fn builtin_aliases()")
+    end = text.index("fn builtin_models()")
+    return len(re.findall(r'^\s*\("', text[start:end], re.MULTILINE))
+
+
 def first_count(pattern: str, path: Path, description: str) -> int:
     text = path.read_text(encoding="utf-8")
     match = re.search(pattern, text, re.IGNORECASE)
@@ -113,7 +120,7 @@ class DocsCatalogCountTests(unittest.TestCase):
         )
         self.assertEqual(expected, cli_channel_count())
 
-    def test_top_level_provider_counts_match_live_model_catalog(self):
+    def test_provider_counts_match_live_model_catalog_across_docs(self):
         expected = live_provider_count()
         self.assertEqual(expected, readme_metric("LLM providers"))
         self.assertEqual(
@@ -121,8 +128,40 @@ class DocsCatalogCountTests(unittest.TestCase):
             first_count(r"(\d+)\s+LLM providers", README_DOC, "README intro provider count"),
         )
         self.assertEqual(provider_catalog_count(), expected)
+        self.assertEqual(
+            expected,
+            first_count(r"catalog of \d+ models across (\d+) providers", API_REFERENCE_DOC, "API reference provider count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"Switch LLM providers\*\*: (\d+) providers supported", GETTING_STARTED_DOC, "getting started provider count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"Key features: \d+ channels, \d+ skills, (\d+) providers, \d+ models", PRODUCTION_CHECKLIST_DOC, "production checklist provider count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"Build ModelCatalog with \d+ builtin models, \d+ aliases, (\d+) providers", ARCHITECTURE_DOC, "architecture init provider count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"cover all (\d+) providers with \d+ builtin models", ARCHITECTURE_DOC, "architecture provider architecture count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"\*\*(\d+) providers\*\* with authentication status detection", ARCHITECTURE_DOC, "architecture registry provider count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"Returns all (\d+) providers with auth status and model counts", PROVIDERS_DOC, "providers guide response provider count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"Lists all (\d+) providers with their authentication status", PROVIDERS_DOC, "providers guide list provider count"),
+        )
 
-    def test_top_level_model_counts_match_live_model_catalog(self):
+    def test_model_counts_match_live_model_catalog_across_docs(self):
         expected = live_model_count()
         self.assertEqual(expected, readme_metric("Models in catalog"))
         self.assertEqual(
@@ -134,6 +173,53 @@ class DocsCatalogCountTests(unittest.TestCase):
             first_count(r"\[ok\]\s+(\d+)\s+models available", CLI_REFERENCE_DOC, "CLI reference model count"),
         )
         self.assertEqual(expected, cli_model_count())
+        self.assertEqual(
+            expected,
+            first_count(r"catalog of (\d+) models across \d+ providers", API_REFERENCE_DOC, "API reference model count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"Key features: \d+ channels, \d+ skills, \d+ providers, (\d+) models", PRODUCTION_CHECKLIST_DOC, "production checklist model count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"Build ModelCatalog with (\d+) builtin models, \d+ aliases, \d+ providers", ARCHITECTURE_DOC, "architecture init model count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"cover all \d+ providers with (\d+) builtin models", ARCHITECTURE_DOC, "architecture provider architecture model count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"\*\*(\d+) builtin models\*\* across", ARCHITECTURE_DOC, "architecture registry model count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"all (\d+) builtin models, sorted by provider", PROVIDERS_DOC, "providers guide catalog model count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"The (\d+) entries above are the builtin catalog", PROVIDERS_DOC, "providers guide builtin entries count"),
+        )
+
+    def test_alias_counts_match_live_model_catalog_across_docs(self):
+        expected = live_alias_count()
+        self.assertEqual(
+            expected,
+            first_count(r"\*\*(\d+) aliases\*\*", PROVIDERS_DOC, "providers guide intro alias count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"All (\d+) aliases resolve to canonical model IDs", PROVIDERS_DOC, "providers guide alias section count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"Build ModelCatalog with \d+ builtin models, (\d+) aliases, \d+ providers", ARCHITECTURE_DOC, "architecture init alias count"),
+        )
+        self.assertEqual(
+            expected,
+            first_count(r"\*\*(\d+) aliases\*\* for convenience", ARCHITECTURE_DOC, "architecture registry alias count"),
+        )
 
 
 if __name__ == "__main__":

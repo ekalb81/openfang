@@ -1,6 +1,6 @@
 # LLM Providers Guide
 
-OpenFang ships with a comprehensive model catalog covering **3 native LLM drivers**, **41 providers**, **202 builtin models**, and **23 aliases**. Every provider uses one of three battle-tested drivers: the native **Anthropic** driver, the native **Gemini** driver, or the universal **OpenAI-compatible** driver. This guide is the single source of truth for configuring, selecting, and managing LLM providers in OpenFang.
+OpenFang ships with a comprehensive model catalog covering **3 native LLM drivers**, **41 providers**, **202 builtin models**, and **65 aliases**. Every provider uses one of three battle-tested drivers: the native **Anthropic** driver, the native **Gemini** driver, or the universal **OpenAI-compatible** driver. This guide is the single source of truth for configuring, selecting, and managing LLM providers in OpenFang.
 
 ---
 
@@ -635,13 +635,13 @@ The complete catalog of all 202 builtin models, sorted by provider. Pricing is p
 
 **Notes:**
 - Local providers (Ollama, vLLM, LM Studio) auto-discover models at runtime. Any model you download and serve will be merged into the catalog with `Local` tier and zero cost.
-- The 46 entries above are the builtin models. The total of 51 referenced in the catalog includes runtime auto-discovered models that vary per installation.
+- The 202 entries above are the builtin catalog. Runtime-discovered local models are added on top of these entries at runtime and vary per installation.
 
 ---
 
 ## Model Aliases
 
-All 23 aliases resolve to canonical model IDs. Aliases are case-insensitive.
+All 65 aliases resolve to canonical model IDs. Aliases are case-insensitive.
 
 | Alias | Resolves To |
 |-------|------------|
