@@ -38,6 +38,31 @@ class DashboardSharedLoadingContractTests(unittest.TestCase):
                     msg=f'{component_name} should gate its content on loading/error completion',
                 )
 
+    def test_dashboard_routes_keep_bootstrap_load_hook(self):
+        for component_name, filename, loader_name in PAGE_CASES:
+            route_block = self._route_block(component_name)
+            source = (PAGES_DIR / filename).read_text()
+            with self.subTest(component=component_name, file=filename, loader=loader_name):
+                x_init_calls = re.findall(r'x-init="([^"]+)"', route_block)
+                self.assertTrue(
+                    x_init_calls,
+                    msg=f'{component_name} should keep an x-init bootstrap hook for its initial load path',
+                )
+                if any(re.search(rf'\b{re.escape(loader_name)}\s*\(', expr) for expr in x_init_calls):
+                    continue
+                self.assertTrue(
+                    any(re.search(r'\binit\s*\(', expr) for expr in x_init_calls),
+                    msg=(
+                        f'{component_name} should either call {loader_name}() directly from x-init '
+                        'or route through init()'
+                    ),
+                )
+                self.assertRegex(
+                    source,
+                    re.compile(rf'init\(\)\s*\{{.*?\b(?:await\s+)?this\.{re.escape(loader_name)}\(', re.S),
+                    msg=f'{filename} init() should bootstrap {loader_name}() when the route uses x-init="init()"',
+                )
+
     def test_page_loader_methods_reset_error_and_finish_loading(self):
         for component_name, filename, loader_name in PAGE_CASES:
             source = (PAGES_DIR / filename).read_text()
