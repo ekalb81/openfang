@@ -77,7 +77,7 @@ impl CredentialVault {
 
     /// Initialize a new vault. Generates a master key and stores it in the OS keyring.
     pub fn init(&mut self) -> ExtensionResult<()> {
-        if self.path.exists() {
+        if self.path.is_file() {
             return Err(ExtensionError::Vault(
                 "Vault already exists. Delete it first to re-initialize.".to_string(),
             ));
@@ -193,7 +193,7 @@ impl CredentialVault {
 
     /// Initialize a vault with an explicit master key (for testing / programmatic use).
     pub fn init_with_key(&mut self, master_key: Zeroizing<[u8; 32]>) -> ExtensionResult<()> {
-        if self.path.exists() {
+        if self.path.is_file() {
             return Err(ExtensionError::Vault(
                 "Vault already exists. Delete it first to re-initialize.".to_string(),
             ));
