@@ -1,6 +1,17 @@
 // OpenFang Scheduler Page — Cron job management + event triggers unified view
 'use strict';
 
+function summarizeJobAction(action) {
+  if (!action) return '';
+  if (action.kind === 'agent_turn') return action.message || '';
+  if (action.kind === 'system_event') return action.text || '';
+  if (action.kind === 'workflow_run') {
+    if (action.input) return 'Workflow ' + (action.workflow_id || '(unnamed)') + ': ' + action.input;
+    return action.workflow_id ? 'Workflow ' + action.workflow_id : '';
+  }
+  return action.message || action.text || action.input || action.workflow_id || '';
+}
+
 function schedulerPage() {
   return {
     tab: 'jobs',
@@ -77,7 +88,7 @@ function schedulerPage() {
           name: j.name,
           cron: cron,
           agent_id: j.agent_id,
-          message: j.action ? j.action.message || '' : '',
+          message: summarizeJobAction(j.action),
           enabled: j.enabled,
           last_run: j.last_run,
           next_run: j.next_run,
