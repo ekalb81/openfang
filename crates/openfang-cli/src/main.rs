@@ -2147,9 +2147,8 @@ fn cmd_doctor(json: bool, repair: bool) {
 
         // --- Check 3: Config TOML syntax validation ---
         let config_path = openfang_dir.join("config.toml");
-        if config_path.exists() {
-            let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
-            match toml::from_str::<toml::Value>(&config_content) {
+        match read_optional_regular_text_file(&config_path, "Config file") {
+            Ok(Some(config_content)) => match toml::from_str::<toml::Value>(&config_content) {
                 Ok(_) => {
                     if !json {
                         ui::check_ok(&format!("Config file: {}", config_path.display()));
@@ -2164,16 +2163,16 @@ fn cmd_doctor(json: bool, repair: bool) {
                     checks.push(serde_json::json!({"check": "config_syntax", "status": "fail", "error": e.to_string()}));
                     all_ok = false;
                 }
-            }
-        } else if repair {
-            if !json {
-                ui::check_fail("Config file not found.");
-            }
-            let answer = prompt_input("    Create default config? [Y/n] ");
-            if answer.is_empty() || answer.starts_with('y') || answer.starts_with('Y') {
-                let (provider, api_key_env, model) = detect_best_provider();
-                let default_config = format!(
-                    r#"# OpenFang Agent OS configuration
+            },
+            Ok(None) if repair => {
+                if !json {
+                    ui::check_fail("Config file not found.");
+                }
+                let answer = prompt_input("    Create default config? [Y/n] ");
+                if answer.is_empty() || answer.starts_with('y') || answer.starts_with('Y') {
+                    let (provider, api_key_env, model) = detect_best_provider();
+                    let default_config = format!(
+                        r#"# OpenFang Agent OS configuration
 # See https://github.com/RightNow-AI/openfang for documentation
 
 # For Docker, change to "0.0.0.0:4200" or set OPENFANG_LISTEN env var.
@@ -2187,30 +2186,40 @@ api_key_env = "{api_key_env}"
 [memory]
 decay_rate = 0.05
 "#
-                );
-                let _ = std::fs::create_dir_all(&openfang_dir);
-                if std::fs::write(&config_path, default_config).is_ok() {
-                    restrict_file_permissions(&config_path);
-                    if !json {
-                        ui::check_ok("Created default config.toml");
+                    );
+                    let _ = std::fs::create_dir_all(&openfang_dir);
+                    if std::fs::write(&config_path, default_config).is_ok() {
+                        restrict_file_permissions(&config_path);
+                        if !json {
+                            ui::check_ok("Created default config.toml");
+                        }
+                        repaired = true;
+                    } else {
+                        if !json {
+                            ui::check_fail("Failed to create config.toml");
+                        }
+                        all_ok = false;
                     }
-                    repaired = true;
                 } else {
-                    if !json {
-                        ui::check_fail("Failed to create config.toml");
-                    }
                     all_ok = false;
                 }
-            } else {
+                checks.push(serde_json::json!({"check": "config_file", "status": if repaired { "repaired" } else { "fail" }}));
+            }
+            Ok(None) => {
+                if !json {
+                    ui::check_fail("Config file not found.");
+                }
+                checks.push(serde_json::json!({"check": "config_file", "status": "fail"}));
                 all_ok = false;
             }
-            checks.push(serde_json::json!({"check": "config_file", "status": if repaired { "repaired" } else { "fail" }}));
-        } else {
-            if !json {
-                ui::check_fail("Config file not found.");
+            Err(error) => {
+                if !json {
+                    ui::check_fail(&error);
+                    ui::hint("Remove or replace the non-file path before retrying.");
+                }
+                checks.push(serde_json::json!({"check": "config_file", "status": "fail", "error": error}));
+                all_ok = false;
             }
-            checks.push(serde_json::json!({"check": "config_file", "status": "fail"}));
-            all_ok = false;
         }
 
         // --- Check 4: Port availability ---
@@ -2512,24 +2521,33 @@ decay_rate = 0.05
     {
         let openfang_dir = cli_openfang_home();
         let config_path = openfang_dir.join("config.toml");
-        if config_path.exists() {
-            let config_str = std::fs::read_to_string(&config_path).unwrap_or_default();
-            // Look for api_key_env references in config
-            for line in config_str.lines() {
-                let trimmed = line.trim();
-                if let Some(rest) = trimmed.strip_prefix("api_key_env") {
-                    if let Some(val_part) = rest.strip_prefix('=') {
-                        let val = val_part.trim().trim_matches('"');
-                        if !val.is_empty() && std::env::var(val).is_err() {
-                            if !json {
-                                ui::check_warn(&format!(
-                                    "Config references {val} but it is not set in env or .env"
-                                ));
+        match read_optional_regular_text_file(&config_path, "Config file") {
+            Ok(Some(config_str)) => {
+                // Look for api_key_env references in config
+                for line in config_str.lines() {
+                    let trimmed = line.trim();
+                    if let Some(rest) = trimmed.strip_prefix("api_key_env") {
+                        if let Some(val_part) = rest.strip_prefix('=') {
+                            let val = val_part.trim().trim_matches('"');
+                            if !val.is_empty() && std::env::var(val).is_err() {
+                                if !json {
+                                    ui::check_warn(&format!(
+                                        "Config references {val} but it is not set in env or .env"
+                                    ));
+                                }
+                                checks.push(serde_json::json!({"check": "env_consistency", "status": "warn", "missing_var": val}));
                             }
-                            checks.push(serde_json::json!({"check": "env_consistency", "status": "warn", "missing_var": val}));
                         }
                     }
                 }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                if !json {
+                    ui::check_fail(&error);
+                }
+                checks.push(serde_json::json!({"check": "config_file", "status": "fail", "error": error}));
+                all_ok = false;
             }
         }
     }
@@ -2538,99 +2556,108 @@ decay_rate = 0.05
     {
         let openfang_dir = cli_openfang_home();
         let config_path = openfang_dir.join("config.toml");
-        if config_path.exists() {
-            if !json {
-                println!("\n  Config Validation:");
-            }
-            let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
-            match toml::from_str::<openfang_types::config::KernelConfig>(&config_content) {
-                Ok(cfg) => {
-                    if !json {
-                        ui::check_ok("Config deserializes into KernelConfig");
-                    }
-                    checks.push(serde_json::json!({"check": "config_deser", "status": "ok"}));
-
-                    // Check exec policy
-                    let mode = format!("{:?}", cfg.exec_policy.mode);
-                    let safe_bins_count = cfg.exec_policy.safe_bins.len();
-                    if !json {
-                        ui::check_ok(&format!(
-                            "Exec policy: mode={mode}, safe_bins={safe_bins_count}"
-                        ));
-                    }
-                    checks.push(serde_json::json!({"check": "exec_policy", "status": "ok", "mode": mode, "safe_bins": safe_bins_count}));
-
-                    // Check includes
-                    if !cfg.include.is_empty() {
-                        let mut include_ok = true;
-                        for inc in &cfg.include {
-                            let inc_path = openfang_dir.join(inc);
-                            if inc_path.exists() {
-                                if !json {
-                                    ui::check_ok(&format!("Include file: {inc}"));
-                                }
-                            } else if repair {
-                                if !json {
-                                    ui::check_warn(&format!("Include file missing: {inc}"));
-                                }
-                                include_ok = false;
-                            } else {
-                                if !json {
-                                    ui::check_fail(&format!("Include file not found: {inc}"));
-                                }
-                                include_ok = false;
-                                all_ok = false;
-                            }
-                        }
-                        checks.push(serde_json::json!({"check": "config_includes", "status": if include_ok { "ok" } else { "fail" }, "count": cfg.include.len()}));
-                    }
-
-                    // Check MCP server configs
-                    if !cfg.mcp_servers.is_empty() {
-                        let mcp_count = cfg.mcp_servers.len();
+        match read_optional_regular_text_file(&config_path, "Config file") {
+            Ok(Some(config_content)) => {
+                if !json {
+                    println!("\n  Config Validation:");
+                }
+                match toml::from_str::<openfang_types::config::KernelConfig>(&config_content) {
+                    Ok(cfg) => {
                         if !json {
-                            ui::check_ok(&format!("MCP servers configured: {mcp_count}"));
+                            ui::check_ok("Config deserializes into KernelConfig");
                         }
-                        for server in &cfg.mcp_servers {
-                            // Validate transport config
-                            match &server.transport {
-                                openfang_types::config::McpTransportEntry::Stdio {
-                                    command,
-                                    ..
-                                } => {
-                                    if command.is_empty() {
-                                        if !json {
-                                            ui::check_warn(&format!(
-                                                "MCP server '{}' has empty command",
-                                                server.name
-                                            ));
-                                        }
-                                        checks.push(serde_json::json!({"check": "mcp_server_config", "status": "warn", "name": server.name}));
+                        checks.push(serde_json::json!({"check": "config_deser", "status": "ok"}));
+
+                        // Check exec policy
+                        let mode = format!("{:?}", cfg.exec_policy.mode);
+                        let safe_bins_count = cfg.exec_policy.safe_bins.len();
+                        if !json {
+                            ui::check_ok(&format!(
+                                "Exec policy: mode={mode}, safe_bins={safe_bins_count}"
+                            ));
+                        }
+                        checks.push(serde_json::json!({"check": "exec_policy", "status": "ok", "mode": mode, "safe_bins": safe_bins_count}));
+
+                        // Check includes
+                        if !cfg.include.is_empty() {
+                            let mut include_ok = true;
+                            for inc in &cfg.include {
+                                let inc_path = openfang_dir.join(inc);
+                                if inc_path.exists() {
+                                    if !json {
+                                        ui::check_ok(&format!("Include file: {inc}"));
                                     }
+                                } else if repair {
+                                    if !json {
+                                        ui::check_warn(&format!("Include file missing: {inc}"));
+                                    }
+                                    include_ok = false;
+                                } else {
+                                    if !json {
+                                        ui::check_fail(&format!("Include file not found: {inc}"));
+                                    }
+                                    include_ok = false;
+                                    all_ok = false;
                                 }
-                                openfang_types::config::McpTransportEntry::Sse { url } => {
-                                    if url.is_empty() {
-                                        if !json {
-                                            ui::check_warn(&format!(
-                                                "MCP server '{}' has empty URL",
-                                                server.name
-                                            ));
+                            }
+                            checks.push(serde_json::json!({"check": "config_includes", "status": if include_ok { "ok" } else { "fail" }, "count": cfg.include.len()}));
+                        }
+
+                        // Check MCP server configs
+                        if !cfg.mcp_servers.is_empty() {
+                            let mcp_count = cfg.mcp_servers.len();
+                            if !json {
+                                ui::check_ok(&format!("MCP servers configured: {mcp_count}"));
+                            }
+                            for server in &cfg.mcp_servers {
+                                // Validate transport config
+                                match &server.transport {
+                                    openfang_types::config::McpTransportEntry::Stdio {
+                                        command,
+                                        ..
+                                    } => {
+                                        if command.is_empty() {
+                                            if !json {
+                                                ui::check_warn(&format!(
+                                                    "MCP server '{}' has empty command",
+                                                    server.name
+                                                ));
+                                            }
+                                            checks.push(serde_json::json!({"check": "mcp_server_config", "status": "warn", "name": server.name}));
                                         }
-                                        checks.push(serde_json::json!({"check": "mcp_server_config", "status": "warn", "name": server.name}));
+                                    }
+                                    openfang_types::config::McpTransportEntry::Sse { url } => {
+                                        if url.is_empty() {
+                                            if !json {
+                                                ui::check_warn(&format!(
+                                                    "MCP server '{}' has empty URL",
+                                                    server.name
+                                                ));
+                                            }
+                                            checks.push(serde_json::json!({"check": "mcp_server_config", "status": "warn", "name": server.name}));
+                                        }
                                     }
                                 }
                             }
+                            checks.push(serde_json::json!({"check": "mcp_servers", "status": "ok", "count": mcp_count}));
                         }
-                        checks.push(serde_json::json!({"check": "mcp_servers", "status": "ok", "count": mcp_count}));
+                    }
+                    Err(e) => {
+                        if !json {
+                            ui::check_fail(&format!("Config fails KernelConfig deserialization: {e}"));
+                        }
+                        checks.push(serde_json::json!({"check": "config_deser", "status": "fail", "error": e.to_string()}));
+                        all_ok = false;
                     }
                 }
-                Err(e) => {
-                    if !json {
-                        ui::check_fail(&format!("Config fails KernelConfig deserialization: {e}"));
-                    }
-                    checks.push(serde_json::json!({"check": "config_deser", "status": "fail", "error": e.to_string()}));
-                    all_ok = false;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                if !json {
+                    ui::check_fail(&error);
                 }
+                checks.push(serde_json::json!({"check": "config_deser", "status": "fail", "error": error}));
+                all_ok = false;
             }
         }
     }
@@ -3733,12 +3760,17 @@ fn cmd_channel_list() {
     let home = openfang_home();
     let config_path = home.join("config.toml");
 
-    if !config_path.exists() {
-        println!("No configuration found. Run `openfang init` first.");
-        return;
-    }
-
-    let config_str = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let config_str = match read_optional_regular_text_file(&config_path, "Config file") {
+        Ok(Some(content)) => content,
+        Ok(None) => {
+            println!("No configuration found. Run `openfang init` first.");
+            return;
+        }
+        Err(error) => {
+            eprintln!("Error: {error}");
+            return;
+        }
+    };
 
     println!("Channel Integrations:\n");
     println!("{:<12} {:<10} STATUS", "CHANNEL", "ENV VAR");
@@ -4061,12 +4093,18 @@ fn maybe_write_channel_config(channel: &str, config_block: &str) {
     let home = openfang_home();
     let config_path = home.join("config.toml");
 
-    if !config_path.exists() {
-        ui::hint("No config.toml found. Run `openfang init` first.");
-        return;
-    }
-
-    let existing = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let existing = match read_optional_regular_text_file(&config_path, "Config file") {
+        Ok(Some(content)) => content,
+        Ok(None) => {
+            ui::hint("No config.toml found. Run `openfang init` first.");
+            return;
+        }
+        Err(error) => {
+            ui::check_fail(&error);
+            ui::hint("Remove or replace the non-file path before editing channel config.");
+            return;
+        }
+    };
     let section_header = format!("[channels.{channel}]");
     if existing.contains(&section_header) {
         ui::check_ok(&format!("{section_header} already in config.toml"));
@@ -4965,6 +5003,35 @@ pub(crate) fn openfang_home() -> PathBuf {
             std::process::exit(1);
         })
         .join(".openfang")
+}
+
+fn read_optional_regular_text_file(
+    path: &std::path::Path,
+    description: &str,
+) -> Result<Option<String>, String> {
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => {}
+        Ok(_) => {
+            return Err(format!(
+                "{} exists but is not a regular file: {}",
+                description,
+                path.display()
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "Failed to inspect {} {}: {}",
+                description,
+                path.display(),
+                error
+            ));
+        }
+    }
+
+    std::fs::read_to_string(path)
+        .map(Some)
+        .map_err(|error| format!("Failed to read {} {}: {}", description, path.display(), error))
 }
 
 fn prompt_input(prompt: &str) -> String {
