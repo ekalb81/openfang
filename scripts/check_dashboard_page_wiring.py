@@ -241,6 +241,13 @@ def main() -> int:
         if xdata:
             route_tags.append((xdata.group(1), line, line_number))
     errors: list[str] = []
+    known_components: set[str] = set()
+    route_root_line_numbers: set[int] = set()
+    for route_entries in collect_route_lines(index_lines).values():
+        for line_number, line in route_entries:
+            if XDATA_RE.search(line):
+                route_root_line_numbers.add(line_number)
+                break
 
     for page_file in sorted(PAGES_DIR.glob("*.js")):
         js = page_file.read_text(encoding="utf-8")
@@ -254,6 +261,7 @@ def main() -> int:
         if not component_names:
             continue
 
+        known_components.update(component_names)
         defined_methods = defined_methods_in(js)
         defined_members = defined_members_in(js)
 
@@ -382,6 +390,17 @@ def main() -> int:
                         errors.append(
                             f"{page_file.relative_to(REPO_ROOT)}: defines {hook_name}() but no matching {expected_display} tag wires {expected_hooks}"
                         )
+
+    for xdata_value, _, line_number in route_tags:
+        if line_number not in route_root_line_numbers:
+            continue
+        component_name, _, suffix = xdata_value.partition("(")
+        if suffix != ")":
+            continue
+        if component_name not in known_components:
+            errors.append(
+                f"{INDEX_BODY.relative_to(REPO_ROOT)}:{line_number}: x-data=\"{xdata_value}\" has no matching page component in {PAGES_DIR.relative_to(REPO_ROOT)}"
+            )
 
     if errors:
         print("Dashboard page wiring check failed:", file=sys.stderr)
