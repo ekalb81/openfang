@@ -11201,9 +11201,14 @@ pub async fn set_agent_file(
         );
     }
 
-    // Atomic write: write to .tmp, then rename
-    let tmp_path = workspace.join(format!(".{filename}.tmp"));
+    // Atomic write: write to a same-directory unique temp file, then rename.
+    let file_name = file_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(filename.as_str());
+    let tmp_path = file_path.with_file_name(format!(".{file_name}.tmp-{}", uuid::Uuid::new_v4()));
     if let Err(e) = std::fs::write(&tmp_path, &req.content) {
+        let _ = std::fs::remove_file(&tmp_path);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": format!("Write failed: {e}")})),
