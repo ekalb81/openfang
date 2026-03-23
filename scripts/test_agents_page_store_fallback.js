@@ -6,7 +6,9 @@ const assert = require('assert');
 const agentsPath = path.join(__dirname, '..', 'crates', 'openfang-api', 'static', 'js', 'pages', 'agents.js');
 const source = fs.readFileSync(agentsPath, 'utf8');
 
-function loadPageWithStore(storeImpl) {
+function loadPageWithStore(storeImpl, apiOverrides = {}) {
+  const successMessages = [];
+  const errorMessages = [];
   const context = {
     Alpine: {
       store: storeImpl,
@@ -15,12 +17,26 @@ function loadPageWithStore(storeImpl) {
       async get() {
         throw new Error('not used in this test');
       },
+      async post() {
+        throw new Error('not used in this test');
+      },
+      async patch() {
+        throw new Error('not used in this test');
+      },
+      async put() {
+        throw new Error('not used in this test');
+      },
+      async del() {
+        throw new Error('not used in this test');
+      },
       wsDisconnect() {},
+      ...apiOverrides,
     },
     OpenFangToast: {
       confirm(_title, _body, fn) { fn(); },
-      success() {},
-      error() {},
+      success(message) { successMessages.push(message); },
+      error(message) { errorMessages.push(message); },
+      warn() {},
     },
     console,
   };
@@ -28,7 +44,14 @@ function loadPageWithStore(storeImpl) {
   vm.createContext(context);
   vm.runInContext(source, context, { filename: agentsPath });
   assert.strictEqual(typeof context.agentsPage, 'function', 'agentsPage should be defined');
-  return context.agentsPage();
+  const page = context.agentsPage();
+  return { page, successMessages, errorMessages };
+}
+
+function flushAsyncWork() {
+  return new Promise(function(resolve) {
+    setTimeout(resolve, 0);
+  });
 }
 
 (async () => {
@@ -44,7 +67,7 @@ function loadPageWithStore(storeImpl) {
       refreshCount += 1;
     },
   };
-  const pageWithStore = loadPageWithStore(function(name) {
+  const { page: pageWithStore } = loadPageWithStore(function(name) {
     assert.strictEqual(name, 'app');
     return healthyStore;
   });
@@ -69,7 +92,7 @@ function loadPageWithStore(storeImpl) {
   pageWithStore.chatWithAgent(healthyStore.agents[0]);
   assert.strictEqual(healthyStore.pendingAgent, healthyStore.agents[0], 'chatWithAgent should update pendingAgent when the app store is available');
 
-  const pageWithoutStore = loadPageWithStore(function() {
+  const { page: pageWithoutStore } = loadPageWithStore(function() {
     throw new Error('app store unavailable');
   });
   let unexpectedWatch = false;
@@ -89,4 +112,82 @@ function loadPageWithStore(storeImpl) {
 
   await pageWithoutStore.loadData();
   assert.strictEqual(pageWithoutStore.loadError, 'Could not load agents. App store unavailable.', 'loadData should preserve a clear load error when the app store is unavailable');
+
+  const apiCalls = [];
+  const { page: actionPage, successMessages, errorMessages } = loadPageWithStore(
+    function() {
+      throw new Error('app store unavailable');
+    },
+    {
+      async del(url) {
+        apiCalls.push(['del', url]);
+      },
+      async post(url) {
+        apiCalls.push(['post', url]);
+        return { agent_id: 'agent-new', name: 'Spawned Agent' };
+      },
+      async patch(url, body) {
+        apiCalls.push(['patch', url, body]);
+        return {};
+      },
+      async put(url, body) {
+        apiCalls.push(['put', url, body]);
+        return { provider: 'openai' };
+      },
+    }
+  );
+
+  actionPage.showDetailModal = true;
+  actionPage.killAgent({ id: 'agent-stop', name: 'Stop Me' });
+  await flushAsyncWork();
+  assert.strictEqual(actionPage.showDetailModal, false, 'killAgent should still close the detail modal when the store is unavailable');
+
+  actionPage.filterState = 'all';
+  Object.defineProperty(actionPage, 'filteredAgents', {
+    value: [
+      { id: 'agent-a', name: 'Alpha' },
+      { id: 'agent-b', name: 'Beta' },
+    ],
+    configurable: true,
+  });
+  actionPage.killAllAgents();
+  await flushAsyncWork();
+
+  actionPage.spawnForm.name = 'Spawned Agent';
+  actionPage.spawnForm.provider = 'openai';
+  actionPage.spawnForm.model = 'gpt-4.1-mini';
+  actionPage.spawnForm.systemPrompt = 'hi';
+  actionPage.spawnIdentity = { emoji: '', color: '#FF5C00', archetype: '' };
+  actionPage.selectedPreset = '';
+  actionPage.soulContent = '';
+  await actionPage.spawnAgent();
+  assert.strictEqual(actionPage.activeChatAgent.id, 'agent-new', 'spawnAgent should still open chat with the new agent when the store is unavailable');
+
+  actionPage.detailAgent = { id: 'agent-model', model_name: 'gpt-4.1-mini' };
+  actionPage.newModelValue = 'gpt-4.1';
+  await actionPage.changeModel();
+  assert.strictEqual(actionPage.detailAgent.id, 'agent-model', 'changeModel should keep the current detail agent when the store is unavailable');
+  actionPage.newProviderValue = 'anthropic';
+  await actionPage.changeProvider();
+  assert.strictEqual(actionPage.detailAgent.id, 'agent-model', 'changeProvider should keep the current detail agent when the store is unavailable');
+
+  assert.deepStrictEqual(errorMessages, [], 'store-unavailable follow-up refreshes should not create false error toasts after successful actions');
+  assert.ok(successMessages.includes('Agent "Stop Me" stopped'), 'killAgent should still report success');
+  assert.ok(successMessages.includes('2 agent(s) stopped'), 'killAllAgents should still report success');
+  assert.ok(successMessages.includes('Agent "Spawned Agent" spawned'), 'spawnAgent should still report success');
+  assert.ok(successMessages.includes('Model changed (provider: openai) (memory reset)'), 'changeModel should still report success');
+  assert.ok(successMessages.includes('Provider changed to openai'), 'changeProvider should still report success');
+  assert.deepStrictEqual(
+    apiCalls.map(function(call) { return call[0] + ' ' + call[1]; }),
+    [
+      'del /api/agents/agent-stop',
+      'del /api/agents/agent-a',
+      'del /api/agents/agent-b',
+      'post /api/agents',
+      'patch /api/agents/agent-new/config',
+      'put /api/agents/agent-model/model',
+      'put /api/agents/agent-model/model',
+    ],
+    'actions should still complete their API work when the store is unavailable'
+  );
 })();

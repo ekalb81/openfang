@@ -227,6 +227,23 @@ function agentsPage() {
       }
     },
 
+    async refreshAppAgents() {
+      var store = this.appStore();
+      if (!store || typeof store.refreshAgents !== 'function') return [];
+      await store.refreshAgents();
+      return Array.isArray(store.agents) ? store.agents : [];
+    },
+
+    findAgentInStore(agentId) {
+      if (!agentId) return null;
+      var store = this.appStore();
+      var agents = store && Array.isArray(store.agents) ? store.agents : [];
+      for (var i = 0; i < agents.length; i++) {
+        if (agents[i].id === agentId) return agents[i];
+      }
+      return null;
+    },
+
     get agents() {
       var store = this.appStore();
       return store && Array.isArray(store.agents) ? store.agents : [];
@@ -393,7 +410,7 @@ function agentsPage() {
           await OpenFangAPI.del('/api/agents/' + agent.id);
           OpenFangToast.success('Agent "' + agent.name + '" stopped');
           self.showDetailModal = false;
-          await Alpine.store('app').refreshAgents();
+          await self.refreshAppAgents();
         } catch(e) {
           OpenFangToast.error('Failed to stop agent: ' + e.message);
         }
@@ -401,6 +418,7 @@ function agentsPage() {
     },
 
     killAllAgents() {
+      var self = this;
       var list = this.filteredAgents;
       if (!list.length) return;
       OpenFangToast.confirm('Stop All Agents', 'Stop ' + list.length + ' agent(s)? All agents will be shut down.', async function() {
@@ -410,7 +428,7 @@ function agentsPage() {
             await OpenFangAPI.del('/api/agents/' + list[i].id);
           } catch(e) { errors.push(list[i].name + ': ' + e.message); }
         }
-        await Alpine.store('app').refreshAgents();
+        await self.refreshAppAgents();
         if (errors.length) {
           OpenFangToast.error('Some agents failed to stop: ' + errors.join(', '));
         } else {
@@ -489,7 +507,7 @@ function agentsPage() {
         await OpenFangAPI.put('/api/agents/' + agent.id + '/mode', { mode: mode });
         agent.mode = mode;
         OpenFangToast.success('Mode set to ' + mode);
-        await Alpine.store('app').refreshAgents();
+        await this.refreshAppAgents();
       } catch(e) {
         OpenFangToast.error('Failed to set mode: ' + e.message);
       }
@@ -526,7 +544,7 @@ function agentsPage() {
           this.spawnToml = '';
           this.spawnStep = 1;
           OpenFangToast.success('Agent "' + (res.name || 'new') + '" spawned');
-          await Alpine.store('app').refreshAgents();
+          await this.refreshAppAgents();
           this.chatWithAgent({ id: res.agent_id, name: res.name, model_provider: '?', model_name: '?' });
         } else {
           OpenFangToast.error('Spawn failed: ' + (res.error || 'Unknown error'));
@@ -592,7 +610,7 @@ function agentsPage() {
       try {
         await OpenFangAPI.patch('/api/agents/' + this.detailAgent.id + '/config', this.configForm);
         OpenFangToast.success('Config updated');
-        await Alpine.store('app').refreshAgents();
+        await this.refreshAppAgents();
       } catch(e) {
         OpenFangToast.error('Failed to save config: ' + e.message);
       }
@@ -606,7 +624,7 @@ function agentsPage() {
         var res = await OpenFangAPI.post('/api/agents/' + agent.id + '/clone', { new_name: newName });
         if (res.agent_id) {
           OpenFangToast.success('Cloned as "' + res.name + '"');
-          await Alpine.store('app').refreshAgents();
+          await this.refreshAppAgents();
           this.showDetailModal = false;
         }
       } catch(e) {
@@ -622,7 +640,7 @@ function agentsPage() {
           var res = await OpenFangAPI.post('/api/agents', { manifest_toml: data.manifest_toml });
           if (res.agent_id) {
             OpenFangToast.success('Agent "' + (res.name || name) + '" spawned from template');
-            await Alpine.store('app').refreshAgents();
+            await this.refreshAppAgents();
             this.chatWithAgent({ id: res.agent_id, name: res.name || name, model_provider: '?', model_name: '?' });
           }
         }
@@ -653,12 +671,10 @@ function agentsPage() {
         var providerInfo = (resp && resp.provider) ? ' (provider: ' + resp.provider + ')' : '';
         OpenFangToast.success('Model changed' + providerInfo + ' (memory reset)');
         this.editingModel = false;
-        await Alpine.store('app').refreshAgents();
+        await this.refreshAppAgents();
         // Refresh detailAgent
-        var agents = Alpine.store('app').agents;
-        for (var i = 0; i < agents.length; i++) {
-          if (agents[i].id === this.detailAgent.id) { this.detailAgent = agents[i]; break; }
-        }
+        var refreshedAgent = this.findAgentInStore(this.detailAgent.id);
+        if (refreshedAgent) this.detailAgent = refreshedAgent;
       } catch(e) {
         OpenFangToast.error('Failed to change model: ' + e.message);
       }
@@ -674,11 +690,9 @@ function agentsPage() {
         var resp = await OpenFangAPI.put('/api/agents/' + this.detailAgent.id + '/model', { model: combined });
         OpenFangToast.success('Provider changed to ' + (resp && resp.provider ? resp.provider : this.newProviderValue.trim()));
         this.editingProvider = false;
-        await Alpine.store('app').refreshAgents();
-        var agents = Alpine.store('app').agents;
-        for (var i = 0; i < agents.length; i++) {
-          if (agents[i].id === this.detailAgent.id) { this.detailAgent = agents[i]; break; }
-        }
+        await this.refreshAppAgents();
+        var refreshedAgent = this.findAgentInStore(this.detailAgent.id);
+        if (refreshedAgent) this.detailAgent = refreshedAgent;
       } catch(e) {
         OpenFangToast.error('Failed to change provider: ' + e.message);
       }
@@ -781,7 +795,7 @@ function agentsPage() {
         var res = await OpenFangAPI.post('/api/agents', { manifest_toml: toml });
         if (res.agent_id) {
           OpenFangToast.success('Agent "' + t.name + '" spawned');
-          await Alpine.store('app').refreshAgents();
+          await this.refreshAppAgents();
           this.chatWithAgent({ id: res.agent_id, name: t.name, model_provider: t.provider, model_name: t.model });
         }
       } catch(e) {
