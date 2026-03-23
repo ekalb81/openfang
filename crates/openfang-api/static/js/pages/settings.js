@@ -288,6 +288,12 @@ function settingsPage() {
       } catch(e) { /* silent */ }
     },
 
+    configSectionFields(sectionMeta) {
+      if (Array.isArray(sectionMeta)) return sectionMeta;
+      if (sectionMeta && Array.isArray(sectionMeta.fields)) return sectionMeta.fields;
+      return [];
+    },
+
     isConfigDirty(section, field) {
       return this.configDirty[section + '.' + field] === true;
     },

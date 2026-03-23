@@ -48,8 +48,28 @@ assert.strictEqual(
   'providerSummaryText should follow the live provider list once providers are loaded'
 );
 
+assert.strictEqual(
+  JSON.stringify(page.configSectionFields([{ name: 'api_key' }, { name: 'log_level' }])),
+  JSON.stringify([{ name: 'api_key' }, { name: 'log_level' }]),
+  'configSectionFields should preserve legacy flat-array section payloads'
+);
+assert.strictEqual(
+  JSON.stringify(page.configSectionFields({ fields: [{ name: 'provider' }, { name: 'model' }] })),
+  JSON.stringify([{ name: 'provider' }, { name: 'model' }]),
+  'configSectionFields should extract field arrays from section metadata objects'
+);
+assert.strictEqual(
+  JSON.stringify(page.configSectionFields({ root_level: true })),
+  JSON.stringify([]),
+  'configSectionFields should fail closed for malformed section metadata'
+);
+
 assert.match(
   indexBody,
   /<p\s+x-text="providerSummaryText\(\)"><\/p>/,
   'Settings provider intro should render the shared providerSummaryText helper'
+);
+assert.ok(
+  indexBody.includes('<template x-for="field in configSectionFields(fields)" :key="section + \'\.\' + field.name">'),
+  'Settings config tab should render config rows through the shared configSectionFields compatibility helper'
 );
