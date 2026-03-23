@@ -11855,7 +11855,7 @@ pub async fn config_set(
             );
         }
     };
-    if let Err(e) = std::fs::write(&config_path, &toml_string) {
+    if let Err(e) = write_text_file_atomically(&config_path, &toml_string) {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"status": "error", "error": format!("write failed: {e}")})),
