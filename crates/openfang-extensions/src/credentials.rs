@@ -10,7 +10,7 @@ use crate::vault::CredentialVault;
 use crate::ExtensionResult;
 use std::collections::HashMap;
 use std::path::Path;
-use tracing::debug;
+use tracing::{debug, warn};
 use zeroize::Zeroizing;
 
 /// Credential resolver — tries multiple sources in priority order.
@@ -27,7 +27,13 @@ impl CredentialResolver {
     /// Create a resolver with optional vault and dotenv path.
     pub fn new(vault: Option<CredentialVault>, dotenv_path: Option<&Path>) -> Self {
         let dotenv = if let Some(path) = dotenv_path {
-            load_dotenv(path).unwrap_or_default()
+            match load_dotenv(path) {
+                Ok(entries) => entries,
+                Err(error) => {
+                    warn!(path = %path.display(), error = %error, "Failed to load dotenv credentials; falling back to other credential sources");
+                    HashMap::new()
+                }
+            }
         } else {
             HashMap::new()
         };
@@ -148,7 +154,7 @@ impl CredentialResolver {
 
 /// Load a dotenv file into a HashMap.
 fn load_dotenv(path: &Path) -> Result<HashMap<String, String>, std::io::Error> {
-    if !path.exists() {
+    if !path.is_file() {
         return Ok(HashMap::new());
     }
     let content = std::fs::read_to_string(path)?;
@@ -273,6 +279,25 @@ SINGLE_QUOTED='single'
     fn load_dotenv_nonexistent() {
         let map = load_dotenv(Path::new("/nonexistent/.env")).unwrap();
         assert!(map.is_empty());
+    }
+
+    #[test]
+    fn load_dotenv_directory_treated_as_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let map = load_dotenv(dir.path()).unwrap();
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn resolver_directory_dotenv_path_falls_back_to_env() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("TEST_CRED_DIR_DOTENV", "from_env");
+
+        let resolver = CredentialResolver::new(None, Some(dir.path()));
+        let val = resolver.resolve("TEST_CRED_DIR_DOTENV").unwrap();
+        assert_eq!(val.as_str(), "from_env");
+
+        std::env::remove_var("TEST_CRED_DIR_DOTENV");
     }
 
     #[test]
