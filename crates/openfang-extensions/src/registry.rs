@@ -53,7 +53,7 @@ impl IntegrationRegistry {
 
     /// Load installed state from integrations.toml.
     pub fn load_installed(&mut self) -> ExtensionResult<usize> {
-        if !self.integrations_path.exists() {
+        if !self.integrations_path.is_file() {
             return Ok(0);
         }
         let content = std::fs::read_to_string(&self.integrations_path)?;
@@ -356,5 +356,18 @@ mod tests {
         reg.set_enabled("github", false).unwrap();
         let configs = reg.to_mcp_configs();
         assert!(configs.is_empty()); // disabled = not in MCP configs
+    }
+
+    #[test]
+    fn registry_load_installed_ignores_directory_placeholder() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("integrations.toml")).unwrap();
+
+        let mut reg = IntegrationRegistry::new(dir.path());
+        reg.load_bundled();
+        let count = reg.load_installed().unwrap();
+
+        assert_eq!(count, 0);
+        assert_eq!(reg.installed_count(), 0);
     }
 }
