@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Guard dashboard page wiring invariants in static/index_body.html.
 
-This catches two lightweight but high-churn regression families:
+This catches three lightweight but high-churn regression families:
 1. Route page components from static/js/pages/*.js (plain factories or Alpine.data registrations)
    must be mounted by a matching x-data binding in static/index_body.html.
-2. Pages that expose route-leave cleanup hooks must wire the matching
+2. Route-root x-init handlers must only call methods that the page component actually defines.
+3. Pages that expose route-leave cleanup hooks must wire the matching
    @page-leave.window="...()" handler on their route root.
 """
 
@@ -26,6 +27,9 @@ ROUTE_LEAVE_HOOKS = {
     "stopAutoRefresh": re.compile(r"\bstopAutoRefresh\s*(?:\(|:)"),
 }
 XDATA_RE = re.compile(r'x-data\s*=\s*"([^"]+)"')
+XINIT_RE = re.compile(r'x-init\s*=\s*"([^"]+)"')
+METHOD_DEF_RE = re.compile(r'^\s*(?:async\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(', re.MULTILINE)
+METHOD_CALL_RE = re.compile(r'(?<![.\w])([A-Za-z_][A-Za-z0-9_]*)\s*\(')
 
 
 def page_leave_hook_re(hook_name: str) -> re.Pattern[str]:
@@ -57,18 +61,30 @@ def main() -> int:
             expected_xdata_values = [component_name, f"{component_name}()"]
 
         matching_tags = [tag for tag in route_tags if tag[0] in expected_xdata_values]
+        expected_display = " or ".join(f'x-data="{value}"' for value in expected_xdata_values)
         if not matching_tags:
-            expected_display = " or ".join(f'x-data="{value}"' for value in expected_xdata_values)
             errors.append(
                 f"{page_file.relative_to(REPO_ROOT)}: missing {expected_display} route binding in {INDEX_BODY.relative_to(REPO_ROOT)}"
             )
             continue
 
+        defined_methods = set(METHOD_DEF_RE.findall(js))
+
+        for _, attrs, line_number in matching_tags:
+            xinit = XINIT_RE.search(attrs)
+            if not xinit:
+                continue
+
+            for method_name in METHOD_CALL_RE.findall(xinit.group(1)):
+                if method_name not in defined_methods:
+                    errors.append(
+                        f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-init references {method_name}() but {component_name} does not define it"
+                    )
+
         for hook_name, hook_re in ROUTE_LEAVE_HOOKS.items():
             if hook_re.search(js):
                 page_leave_re = page_leave_hook_re(hook_name)
                 if not any(page_leave_re.search(attrs) for _, attrs, _ in matching_tags):
-                    expected_display = " or ".join(f'x-data="{value}"' for value in expected_xdata_values)
                     errors.append(
                         f"{page_file.relative_to(REPO_ROOT)}: defines {hook_name}() but no matching {expected_display} tag wires @page-leave.window=\"{hook_name}()\""
                     )
