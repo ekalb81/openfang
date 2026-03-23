@@ -193,6 +193,13 @@ fn read_cached_file(path: &Path) -> CachedFileRead {
             return CachedFileRead::Unreadable;
         }
     };
+    if !meta.is_file() {
+        debug!(
+            path = %path.display(),
+            "Skipping workspace context entry because it is not a regular file"
+        );
+        return CachedFileRead::Missing;
+    }
     if meta.len() > MAX_FILE_SIZE {
         debug!(
             path = %path.display(),
@@ -607,8 +614,8 @@ mod tests {
     }
 
     #[test]
-    fn test_get_file_keeps_cached_content_when_refresh_becomes_unreadable() {
-        let dir = std::env::temp_dir().join("openfang_ws_cache_unreadable_refresh_test");
+    fn test_get_file_removes_cached_content_when_entry_becomes_directory() {
+        let dir = std::env::temp_dir().join("openfang_ws_cache_directory_refresh_test");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("SOUL.md"), "original soul").unwrap();
@@ -619,8 +626,8 @@ mod tests {
         std::fs::remove_file(dir.join("SOUL.md")).unwrap();
         std::fs::create_dir_all(dir.join("SOUL.md")).unwrap();
 
-        assert_eq!(ctx.get_file("SOUL.md"), Some("original soul"));
-        assert!(ctx.cache.contains_key("SOUL.md"));
+        assert_eq!(ctx.get_file("SOUL.md"), None);
+        assert!(!ctx.cache.contains_key("SOUL.md"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
