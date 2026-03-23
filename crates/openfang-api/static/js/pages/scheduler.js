@@ -266,8 +266,17 @@ function schedulerPage() {
 
     // ── Utility ──
 
+    appAgents() {
+      try {
+        var appStore = Alpine.store('app');
+        return (appStore && appStore.agents) || [];
+      } catch(_err) {
+        return [];
+      }
+    },
+
     get availableAgents() {
-      return Alpine.store('app').agents || [];
+      return this.appAgents();
     },
 
     agentName(agentId) {
