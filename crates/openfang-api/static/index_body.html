@@ -5063,7 +5063,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                   <template x-for="p in providers" :key="p.id">
                     <tr>
                       <td x-text="p.display_name || p.id"></td>
-                      <td><span class="badge" :class="p.reachable ? 'badge-success' : (p.auth_status === 'Configured' ? 'badge-success' : 'badge-dim')" x-text="p.reachable ? 'Online' : (p.auth_status === 'Configured' ? 'Ready' : 'Not configured')"></span></td>
+                      <td><span class="badge" :class="p.reachable ? 'badge-success' : (p.auth_status === 'configured' ? 'badge-success' : 'badge-dim')" x-text="p.reachable ? 'Online' : (p.auth_status === 'configured' ? 'Ready' : 'Not configured')"></span></td>
                       <td x-text="p.model_count"></td>
                       <td x-text="p.latency_ms ? p.latency_ms + 'ms' : '-'"></td>
                     </tr>

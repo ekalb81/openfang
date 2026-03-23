@@ -49,7 +49,7 @@ document.addEventListener('alpine:init', function() {
           else this.uptime = Math.floor(diff / 86400) + 'd ' + Math.floor((diff % 86400) / 3600) + 'h';
 
           this.providers = (prov.providers || []).filter(function(p) {
-            return p.auth_status === 'Configured' || p.reachable || p.is_local;
+            return p.auth_status === 'configured' || p.reachable || p.is_local;
           });
         } catch(e) {
           this.loadError = e.message || 'Could not load runtime data.';
