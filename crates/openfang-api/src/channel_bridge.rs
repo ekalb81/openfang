@@ -133,7 +133,7 @@ impl ChannelBridgeHandle for KernelBridgeAdapter {
             .join(manifest_name)
             .join("agent.toml");
 
-        if !manifest_path.exists() {
+        if !manifest_path.is_file() {
             return Err(format!("Manifest not found: {}", manifest_path.display()));
         }
 
