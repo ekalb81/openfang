@@ -497,6 +497,16 @@ fn write_secret_env(path: &Path, key: &str, value: &str) -> Result<(), std::io::
     }
 
     let mut lines: Vec<String> = if path.exists() {
+        if !path.is_file() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Refusing to write secret env to non-file path: {}",
+                    path.display()
+                ),
+            ));
+        }
+
         std::fs::read_to_string(path)?
             .lines()
             .map(|l| l.to_string())
@@ -5125,6 +5135,19 @@ mod tests {
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
         let written = std::fs::read_to_string(&path).unwrap();
         assert_eq!(written, "TOKEN=old\nTOKEN_SUFFIX=keep\n");
+    }
+
+    #[test]
+    fn test_write_secret_env_rejects_directory_shaped_target_without_creating_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("secrets.env");
+        std::fs::create_dir(&path).unwrap();
+
+        let err = write_secret_env(&path, "TOKEN", "value").unwrap_err();
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(path.is_dir());
+        assert!(std::fs::read_dir(&path).unwrap().next().is_none());
     }
 
     #[test]
