@@ -47,13 +47,13 @@ fn is_first_run() -> bool {
             None => return true,
         }
     };
-    !of_home.join("config.toml").exists()
+    !of_home.join("config.toml").is_file()
 }
 
 fn has_openclaw() -> bool {
-    // Quick check: does ~/.openclaw exist?
+    // Quick check: does ~/.openclaw exist as a real directory?
     dirs::home_dir()
-        .map(|h| h.join(".openclaw").exists())
+        .map(|h| h.join(".openclaw").is_dir())
         .unwrap_or(false)
 }
 
