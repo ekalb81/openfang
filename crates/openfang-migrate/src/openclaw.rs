@@ -3190,7 +3190,7 @@ fn migrate_legacy_memory(
     report: &mut MigrationReport,
 ) -> Result<(), MigrateError> {
     let agents_dir = source.join("agents");
-    if !agents_dir.exists() {
+    if !agents_dir.is_dir() {
         return Ok(());
     }
 
@@ -3242,7 +3242,7 @@ fn migrate_legacy_workspaces(
     report: &mut MigrationReport,
 ) -> Result<(), MigrateError> {
     let agents_dir = source.join("agents");
-    if !agents_dir.exists() {
+    if !agents_dir.is_dir() {
         return Ok(());
     }
 
@@ -4550,6 +4550,34 @@ mod tests {
         assert!(report
             .warnings
             .contains(&"No agents/ directory found".to_string()));
+    }
+
+    #[test]
+    fn test_migrate_legacy_memory_ignores_file_shaped_agents_root() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        std::fs::write(source.path().join("agents"), "not a directory").unwrap();
+
+        let mut report = MigrationReport::default();
+        migrate_legacy_memory(source.path(), target.path(), false, &mut report).unwrap();
+
+        assert!(report.imported.is_empty());
+        assert!(report.skipped.is_empty());
+        assert!(!target.path().join("agents").exists());
+    }
+
+    #[test]
+    fn test_migrate_legacy_workspaces_ignores_file_shaped_agents_root() {
+        let source = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        std::fs::write(source.path().join("agents"), "not a directory").unwrap();
+
+        let mut report = MigrationReport::default();
+        migrate_legacy_workspaces(source.path(), target.path(), false, &mut report).unwrap();
+
+        assert!(report.imported.is_empty());
+        assert!(report.skipped.is_empty());
+        assert!(!target.path().join("agents").exists());
     }
 
     #[test]
