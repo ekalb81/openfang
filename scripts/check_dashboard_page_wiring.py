@@ -52,10 +52,14 @@ XMODEL_RE = re.compile(r'x-model(?:\.[A-Za-z0-9_-]+)*\s*=\s*"([^"]+)"')
 XFOR_RE = re.compile(r'x-for\s*=\s*"([^"]+)"')
 STATE_LIKE_IDENTIFIER_RE = re.compile(r'(?<![.\w$])([A-Za-z_][A-Za-z0-9_]*(?:Loading|Error))\b')
 SIMPLE_MEMBER_EXPR_RE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\b(?:\s*(?:[.[(]|$))')
+DIRECT_MEMBER_EXPR_RE = re.compile(
+    r'^\s*!*\s*([A-Za-z_][A-Za-z0-9_]*)\b(?:\s*(?:\.[A-Za-z_][A-Za-z0-9_]*|\[[^\]]+\]))*\s*$'
+)
 HTML_TAG_RE = re.compile(r'<(/?)([A-Za-z0-9:-]+)\b[^>]*?>')
 TAG_RE = re.compile(r'<[^>]+>')
 VOID_HTML_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 GLOBAL_TEMPLATE_HELPERS = {"escapeHtml", "renderMarkdown", "toolIcon"}
+IGNORED_MEMBER_ROOTS = {"true", "false", "null", "undefined", "$event"}
 
 
 def page_leave_hook_re(hook_name: str) -> re.Pattern[str]:
@@ -109,6 +113,16 @@ def model_member_root(expr: str) -> str | None:
     if not match:
         return None
     return match.group(1)
+
+
+def direct_member_root(expr: str) -> str | None:
+    match = DIRECT_MEMBER_EXPR_RE.match(STRING_LITERAL_RE.sub("", expr))
+    if not match:
+        return None
+    root = match.group(1)
+    if root in IGNORED_MEMBER_ROOTS:
+        return None
+    return root
 
 
 def collect_route_lines(index_lines: list[str]) -> dict[str, list[tuple[int, str]]]:
@@ -208,6 +222,7 @@ def main() -> int:
         route_line_entries = route_lines.get(route_name, [])
         route_root_lines = {line_number for _, _, line_number in matching_tags}
         nested_xdata_depth = 0
+        xfor_depth = 0
 
         for line_number, line in route_line_entries:
             line_starts_nested_scope = 'x-data' in line and line_number not in route_root_lines
@@ -218,6 +233,10 @@ def main() -> int:
             if nested_xdata_depth > 0:
                 nested_xdata_depth += html_tag_depth_delta(line)
                 continue
+
+            line_starts_xfor_scope = bool(XFOR_RE.search(line))
+            if line_starts_xfor_scope:
+                xfor_depth += max(1, html_tag_depth_delta(line))
 
             xinit = XINIT_RE.search(line)
             if xinit and line_number not in route_root_lines:
@@ -245,6 +264,12 @@ def main() -> int:
                     errors.append(
                         f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route expression references {identifier} but {component_name} does not define it"
                     )
+                if xfor_depth <= 0:
+                    root = direct_member_root(expr)
+                    if root and root not in defined_members and root not in undefined_identifiers:
+                        errors.append(
+                            f"{page_file.relative_to(REPO_ROOT)}:{line_number}: route expression references {root} but {component_name} does not define it"
+                        )
 
             for model_match in XMODEL_RE.finditer(line):
                 root = model_member_root(model_match.group(1))
@@ -265,6 +290,9 @@ def main() -> int:
                     errors.append(
                         f"{page_file.relative_to(REPO_ROOT)}:{line_number}: x-for references {root} but {component_name} does not define it"
                     )
+
+            if xfor_depth > 0 and not line_starts_xfor_scope:
+                xfor_depth += html_tag_depth_delta(line)
 
         for hook_name, hook_re in ROUTE_LEAVE_HOOKS.items():
             if hook_re.search(js):

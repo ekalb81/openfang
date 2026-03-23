@@ -156,6 +156,13 @@ class DashboardPageWiringTests(unittest.TestCase):
         self.assertEqual(module.model_member_root('configForm.name'), 'configForm')
         self.assertEqual(module.model_member_root('spawnForm.caps.memory_read'), 'spawnForm')
 
+    def test_direct_member_root_supports_simple_unary_and_member_access_forms(self):
+        self.assertEqual(module.direct_member_root('selectedSession.agent_name'), 'selectedSession')
+        self.assertEqual(module.direct_member_root('!loadError'), 'loadError')
+        self.assertEqual(module.direct_member_root('formValues[field.key]'), 'formValues')
+        self.assertIsNone(module.direct_member_root("loading ? 'yes' : 'no'"))
+        self.assertIsNone(module.direct_member_root('$event.target.value'))
+
     def test_xmodel_xfor_and_xhtml_regexes_capture_route_bindings(self):
         line = (
             '<input x-model="formValues[field.key]">'
@@ -441,6 +448,51 @@ class DashboardPageWiringTests(unittest.TestCase):
                     <input x-model.number="customModelCntxt">
                     <div x-data="childWidget()">
                       <input x-model.number="missingChildField">
+                    </div>
+                  </section>
+                </template>
+                """,
+                encoding='utf-8',
+            )
+
+            old_repo_root = module.REPO_ROOT
+            old_pages_dir = module.PAGES_DIR
+            old_index_body = module.INDEX_BODY
+            try:
+                module.REPO_ROOT = root
+                module.PAGES_DIR = pages_dir
+                module.INDEX_BODY = root / 'crates/openfang-api/static/index_body.html'
+                self.assertEqual(module.main(), 1)
+            finally:
+                module.REPO_ROOT = old_repo_root
+                module.PAGES_DIR = old_pages_dir
+                module.INDEX_BODY = old_index_body
+
+    def test_main_flags_direct_route_expression_member_typos_outside_nested_xdata(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pages_dir = root / 'crates/openfang-api/static/js/pages'
+            pages_dir.mkdir(parents=True)
+            (pages_dir / 'sessions.js').write_text(
+                """
+                function sessionsPage() {
+                    return {
+                        loading: false,
+                        selectedSession: null,
+                    };
+                }
+                """,
+                encoding='utf-8',
+            )
+            (root / 'crates/openfang-api/static/index_body.html').write_text(
+                """
+                <template x-if="page === 'sessions'">
+                  <section x-data="sessionsPage()">
+                    <div x-show="selectedSesion"></div>
+                    <div x-text="selectedSesion.agent_name"></div>
+                    <div x-data="childWidget()">
+                      <div x-text="missingChildState.name"></div>
                     </div>
                   </section>
                 </template>
