@@ -305,6 +305,24 @@ impl WorkspaceState {
         let path = workspace_root
             .join(".openfang")
             .join("workspace-state.json");
+
+        let metadata = match std::fs::metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Self::default(),
+            Err(error) => {
+                warn!(
+                    path = %path.display(),
+                    %error,
+                    "Failed to stat workspace state; falling back to defaults"
+                );
+                return Self::default();
+            }
+        };
+
+        if !metadata.is_file() {
+            return Self::default();
+        }
+
         match std::fs::read_to_string(&path) {
             Ok(json) => match serde_json::from_str(&json) {
                 Ok(state) => state,
@@ -708,6 +726,20 @@ mod tests {
         let dir = std::env::temp_dir().join("openfang_ws_state_missing");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+
+        let state = WorkspaceState::load(&dir);
+        assert_eq!(state.version, 1);
+        assert!(state.bootstrap_seeded_at.is_none());
+        assert!(state.onboarding_completed_at.is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_workspace_state_directory_placeholder_falls_back_to_defaults() {
+        let dir = std::env::temp_dir().join("openfang_ws_state_directory_placeholder");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".openfang").join("workspace-state.json")).unwrap();
 
         let state = WorkspaceState::load(&dir);
         assert_eq!(state.version, 1);
