@@ -12,6 +12,13 @@ const appStore = {
 };
 
 let throwOnStore = false;
+let apiResponse = {
+  approvals: [
+    { id: 'b', status: 'approved' },
+    { id: 'c', status: 'pending' },
+    { id: 'a', status: 'pending' },
+  ],
+};
 const context = {
   Alpine: {
     store(name) {
@@ -25,13 +32,7 @@ const context = {
   OpenFangAPI: {
     async get(url) {
       assert.strictEqual(url, '/api/approvals');
-      return {
-        approvals: [
-          { id: 'b', status: 'approved' },
-          { id: 'c', status: 'pending' },
-          { id: 'a', status: 'pending' },
-        ],
-      };
+      return apiResponse;
     },
   },
   OpenFangToast: {
@@ -58,12 +59,30 @@ assert.strictEqual(typeof context.approvalsPage, 'function', 'approvalsPage shou
   assert.strictEqual(page.loading, false, 'loadData should finish loading');
   assert.strictEqual(page.loadError, '', 'loadData should clear prior load errors on success');
 
+  apiResponse = [
+    { id: 'x', status: 'pending' },
+    { id: 'y', status: 'rejected' },
+  ];
+  const arrayPage = context.approvalsPage();
+  await arrayPage.loadData();
+
+  assert.strictEqual(arrayPage.approvals.length, 2, 'loadData should also accept array-shaped approvals responses');
+  assert.strictEqual(appStore.pendingApprovalCount, 1, 'array-shaped responses should still sync pending counts');
+  assert.strictEqual(appStore.lastPendingApprovalSignature, 'x', 'array-shaped responses should still normalize signatures');
+
   throwOnStore = true;
+  apiResponse = {
+    approvals: [
+      { id: 'b', status: 'approved' },
+      { id: 'c', status: 'pending' },
+      { id: 'a', status: 'pending' },
+    ],
+  };
   const pageWithoutStore = context.approvalsPage();
   await pageWithoutStore.loadData();
 
   assert.strictEqual(pageWithoutStore.approvals.length, 3, 'loadData should still populate approvals when the shared app store throws');
   assert.strictEqual(pageWithoutStore.loading, false, 'loadData should still finish when the shared app store is unavailable');
   assert.strictEqual(pageWithoutStore.loadError, '', 'store lookup failures should not surface as load errors');
-  assert.strictEqual(appStore.pendingApprovalCount, 2, 'store lookup failures should leave the last synced badge count untouched');
+  assert.strictEqual(appStore.pendingApprovalCount, 1, 'store lookup failures should leave the last synced badge count untouched');
 })();

@@ -56,7 +56,7 @@ function approvalsPage() {
       this.loadError = '';
       try {
         var data = await OpenFangAPI.get('/api/approvals');
-        this.approvals = data.approvals || [];
+        this.approvals = Array.isArray(data) ? data : ((data && data.approvals) || []);
         this.syncPendingApprovalStore();
       } catch(e) {
         this.loadError = e.message || 'Could not load approvals.';
