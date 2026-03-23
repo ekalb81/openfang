@@ -1920,7 +1920,7 @@
 
     <!-- Page: Channels -->
     <template x-if="page === 'channels'">
-      <div x-data="channelsPage" @page-leave.window="destroy()">
+      <div x-data="channelsPage()" @page-leave.window="destroy()">
         <div class="page-header">
           <h2>Channels <span class="badge badge-muted" x-text="configuredCount + '/' + allChannels.length + ' configured'"></span></h2>
         </div>
@@ -3195,7 +3195,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Settings -->
     <template x-if="page === 'settings'">
-      <div x-data="settingsPage" @page-leave.window="destroy()">
+      <div x-data="settingsPage()" @page-leave.window="destroy()">
         <div class="page-header"><h2>Settings</h2></div>
         <div class="page-body" x-init="loadSettings()">
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading settings...</span></div>
