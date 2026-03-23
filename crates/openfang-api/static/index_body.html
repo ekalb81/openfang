@@ -4365,7 +4365,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <div class="tab" :class="{ active: tab === 'live' }" @click="tab = 'live'">Live</div>
           <div class="tab" :class="{ active: tab === 'audit' }" @click="tab = 'audit'; if (!auditEntries.length && !auditLoading) loadAudit()">Audit Trail</div>
         </div>
-        <div class="page-body" x-init="init()">
+        <div class="page-body">
           <!-- Live logs tab -->
           <div x-show="tab === 'live'">
             <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Connecting to log stream...</span></div>

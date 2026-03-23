@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import unittest
 
 
@@ -14,10 +15,19 @@ class LogsPageInitWiringTests(unittest.TestCase):
         self.assertIn('await this.loadData();', js)
         self.assertIn('this.startStreaming();', js)
 
-    def test_logs_page_template_calls_init_and_destroy(self):
+    def test_logs_page_template_calls_init_and_destroy_once(self):
         html = INDEX_BODY.read_text()
         self.assertIn('x-data="logsPage()" x-init="init()" @page-leave.window="destroy()"', html)
         self.assertNotIn('x-data="logsPage()" @page-leave.window="destroy()"', html)
+
+        route_match = re.search(
+            r'<template x-if="page === \'logs\'">(?P<body>.*?)</template>',
+            html,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(route_match)
+        assert route_match is not None
+        self.assertEqual(route_match.group('body').count('x-init="init()"'), 1)
 
 
 if __name__ == '__main__':
