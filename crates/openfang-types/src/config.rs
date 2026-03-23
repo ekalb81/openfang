@@ -3092,6 +3092,12 @@ impl KernelConfig {
                     mx.access_token_env
                 ));
             }
+            if mx.auto_accept_invites && mx.allowed_rooms.is_empty() {
+                warnings.push(
+                    "Matrix auto_accept_invites is enabled without allowed_rooms; the bot will join any invited room"
+                        .to_string(),
+                );
+            }
         }
         if let Some(ref em) = self.channels.email {
             if std::env::var(&em.password_env)
@@ -3771,6 +3777,37 @@ mod tests {
         assert!(warnings.iter().any(|warning| warning.contains("Messenger configured but OPENFANG_TEST_NONEXISTENT_VAR_MESSENGER_VERIFY is not set")));
         assert!(warnings.iter().any(|warning| warning.contains("Reddit configured but OPENFANG_TEST_NONEXISTENT_VAR_REDDIT_SECRET is not set")));
         assert!(warnings.iter().any(|warning| warning.contains("Reddit configured but OPENFANG_TEST_NONEXISTENT_VAR_REDDIT_PASSWORD is not set")));
+    }
+
+    #[test]
+    fn test_validate_warns_on_unrestricted_matrix_auto_accept_invites() {
+        let mut config = KernelConfig::default();
+        config.channels.matrix = Some(MatrixConfig {
+            auto_accept_invites: true,
+            ..Default::default()
+        });
+
+        let warnings = config.validate();
+
+        assert_eq!(warnings.len(), 2);
+        assert!(warnings.iter().any(|warning| warning.contains("Matrix configured but MATRIX_ACCESS_TOKEN is not set")));
+        assert!(warnings.iter().any(|warning| warning.contains("Matrix auto_accept_invites is enabled without allowed_rooms")));
+    }
+
+    #[test]
+    fn test_validate_allows_scoped_matrix_auto_accept_invites() {
+        let mut config = KernelConfig::default();
+        config.channels.matrix = Some(MatrixConfig {
+            auto_accept_invites: true,
+            allowed_rooms: vec!["!ops:matrix.org".to_string()],
+            ..Default::default()
+        });
+
+        let warnings = config.validate();
+
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings.iter().any(|warning| warning.contains("Matrix configured but MATRIX_ACCESS_TOKEN is not set")));
+        assert!(!warnings.iter().any(|warning| warning.contains("Matrix auto_accept_invites is enabled without allowed_rooms")));
     }
 
     #[test]
