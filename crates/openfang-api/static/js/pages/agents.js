@@ -219,7 +219,18 @@ function agentsPage() {
       return [];
     },
 
-    get agents() { return Alpine.store('app').agents; },
+    appStore() {
+      try {
+        return Alpine.store('app');
+      } catch(e) {
+        return null;
+      }
+    },
+
+    get agents() {
+      var store = this.appStore();
+      return store && Array.isArray(store.agents) ? store.agents : [];
+    },
 
     get filteredAgents() {
       var f = this.filterState;
@@ -278,33 +289,44 @@ function agentsPage() {
       var self = this;
       this.loading = true;
       this.loadError = '';
-      try {
-        await Alpine.store('app').refreshAgents();
-      } catch(e) {
-        this.loadError = e.message || 'Could not load agents. Is the daemon running?';
+      var store = this.appStore();
+      if (store && typeof store.refreshAgents === 'function') {
+        try {
+          await store.refreshAgents();
+        } catch(e) {
+          this.loadError = e.message || 'Could not load agents. Is the daemon running?';
+        }
+      } else {
+        this.loadError = 'Could not load agents. App store unavailable.';
       }
       this.loading = false;
 
       // If a pending agent was set (e.g. from wizard or redirect), open chat inline
-      var store = Alpine.store('app');
-      if (store.pendingAgent) {
+      if (store && store.pendingAgent) {
         this.activeChatAgent = store.pendingAgent;
       }
       // Watch for future pendingAgent changes
-      this.$watch('$store.app.pendingAgent', function(agent) {
-        if (agent) {
-          self.activeChatAgent = agent;
-        }
-      });
+      if (store && typeof this.$watch === 'function') {
+        this.$watch('$store.app.pendingAgent', function(agent) {
+          if (agent) {
+            self.activeChatAgent = agent;
+          }
+        });
+      }
     },
 
     async loadData() {
       this.loading = true;
       this.loadError = '';
-      try {
-        await Alpine.store('app').refreshAgents();
-      } catch(e) {
-        this.loadError = e.message || 'Could not load agents.';
+      var store = this.appStore();
+      if (store && typeof store.refreshAgents === 'function') {
+        try {
+          await store.refreshAgents();
+        } catch(e) {
+          this.loadError = e.message || 'Could not load agents.';
+        }
+      } else {
+        this.loadError = 'Could not load agents. App store unavailable.';
       }
       this.loading = false;
     },
@@ -327,7 +349,10 @@ function agentsPage() {
     },
 
     chatWithAgent(agent) {
-      Alpine.store('app').pendingAgent = agent;
+      var store = this.appStore();
+      if (store) {
+        store.pendingAgent = agent;
+      }
       this.activeChatAgent = agent;
     },
 
