@@ -1,4 +1,4 @@
-//! Channels screen: list all 40 adapters, setup wizards, test & toggle.
+//! Channels screen: list all 41 adapters, setup wizards, test & toggle.
 
 use crate::tui::theme;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -27,7 +27,7 @@ pub enum ChannelStatus {
     NotConfigured,
 }
 
-// ── Channel definitions — all 40 adapters ───────────────────────────────────
+// ── Channel definitions — all 41 adapters ───────────────────────────────────
 
 struct ChannelDef {
     name: &'static str,
@@ -38,7 +38,7 @@ struct ChannelDef {
 }
 
 const CHANNEL_DEFS: &[ChannelDef] = &[
-    // ── Messaging (12)
+    // ── Messaging (13)
     ChannelDef {
         name: "telegram",
         display_name: "Telegram",
@@ -122,6 +122,13 @@ const CHANNEL_DEFS: &[ChannelDef] = &[
         category: "Messaging",
         env_vars: &["KEYBASE_PAPERKEY"],
         description: "Keybase chat adapter",
+    },
+    ChannelDef {
+        name: "wecom",
+        display_name: "WeCom",
+        category: "Messaging",
+        env_vars: &["WECOM_SECRET"],
+        description: "WeCom (WeChat Work) adapter",
     },
     // ── Social (5)
     ChannelDef {

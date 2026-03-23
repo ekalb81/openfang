@@ -2984,7 +2984,7 @@ const CHANNEL_REGISTRY: &[ChannelMeta] = &[
             "Add robot capability and configure permissions",
             "Copy App Key and App Secret below",
         ],
-        config_template: "[channels.dingtalk_stream]\napp_key_env = \"DINGTALK_APP_KEY\"\napp_secret_env = \"DINGTALK_APP_SECRET\"",
+        config_template: "[channels.dingtalk_stream]\napp_key_env = \"DINGTALK_APP_KEY\"\napp_secret_env = \"DINGTALK_APP_SECRET\"\nrobot_code_env = \"DINGTALK_ROBOT_CODE\"",
     },
     ChannelMeta {
         name: "pumble",
@@ -3767,7 +3767,7 @@ const CHANNEL_REGISTRY: &[ChannelMeta] = &[
             },
         ],
         setup_steps: &["Pick a topic name", "Enter it below — that's it!"],
-        config_template: "[channels.ntfy]\ntopic = \"\"",
+        config_template: "[channels.ntfy]\ntopic = \"\"\ntoken_env = \"NTFY_TOKEN\"",
     },
     ChannelMeta {
         name: "gotify",
@@ -3945,7 +3945,7 @@ const CHANNEL_REGISTRY: &[ChannelMeta] = &[
             },
         ],
         setup_steps: &["Enter host and username below", "Optionally add a password"],
-        config_template: "[channels.mumble]\nhost = \"\"\nusername = \"openfang\"",
+        config_template: "[channels.mumble]\nhost = \"\"\nusername = \"openfang\"\npassword_env = \"MUMBLE_PASSWORD\"",
     },
     ChannelMeta {
         name: "wecom",
