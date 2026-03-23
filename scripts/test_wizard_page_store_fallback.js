@@ -14,9 +14,10 @@ function createLocation() {
   };
 }
 
-function buildPage(storeImpl, apiPost, toastSink) {
+function buildPage(storeImpl, apiPost, toastSink, options = {}) {
   const location = createLocation();
   const localStorageData = {};
+  const storageThrows = !!options.storageThrows;
   const context = {
     Alpine: { store: storeImpl },
     OpenFangAPI: { post: apiPost },
@@ -25,8 +26,14 @@ function buildPage(storeImpl, apiPost, toastSink) {
       error(message) { toastSink.error.push(message); },
     },
     localStorage: {
-      setItem(key, value) { localStorageData[key] = String(value); },
-      getItem(key) { return Object.prototype.hasOwnProperty.call(localStorageData, key) ? localStorageData[key] : null; },
+      setItem(key, value) {
+        if (storageThrows) throw new Error('storage denied');
+        localStorageData[key] = String(value);
+      },
+      getItem(key) {
+        if (storageThrows) throw new Error('storage denied');
+        return Object.prototype.hasOwnProperty.call(localStorageData, key) ? localStorageData[key] : null;
+      },
     },
     window: { location },
     location,
@@ -101,4 +108,36 @@ function buildPage(storeImpl, apiPost, toastSink) {
   unavailable.page.createdAgent = null;
   unavailable.page.finishAndDismiss();
   assert.strictEqual(unavailable.location.hash, 'overview', 'finishAndDismiss should still navigate to overview without the app store');
+
+  const storageDeniedToasts = { success: [], error: [] };
+  const storageDenied = buildPage(
+    function() {
+      throw new Error('app store unavailable');
+    },
+    async function(url, payload) {
+      if (url === '/api/agents/agent-storage/message') {
+        assert.ok(payload && typeof payload === 'object', 'sendTryItMessage should send an object payload');
+        assert.strictEqual(payload.message, 'Hello wizard', 'sendTryItMessage should post the user message payload');
+        return { response: 'Still works' };
+      }
+      throw new Error('unexpected API call: ' + url);
+    },
+    storageDeniedToasts,
+    { storageThrows: true },
+  );
+
+  storageDenied.page.createdAgent = { id: 'agent-storage', name: 'Storage Denied Agent' };
+  await storageDenied.page.sendTryItMessage('Hello wizard');
+  assert.strictEqual(storageDenied.page.tryItMessages.length, 2, 'sendTryItMessage should still append user and agent messages when storage is denied');
+  assert.strictEqual(storageDenied.page.tryItMessages[1].text, 'Still works', 'sendTryItMessage should keep the API response when storage is denied');
+  assert.strictEqual(storageDenied.page.tryItSending, false, 'sendTryItMessage should clear the sending flag after a storage-denied success');
+  assert.deepStrictEqual(storageDeniedToasts.error, [], 'storage-denied sendTryItMessage should not emit a false error toast after success');
+  assert.deepStrictEqual(storageDenied.localStorageData, {}, 'storage-denied flows should degrade without persisting browser flags');
+
+  storageDenied.page.finish();
+  assert.strictEqual(storageDenied.location.hash, 'agents', 'finish should still navigate to agents when storage is denied');
+
+  storageDenied.page.createdAgent = null;
+  storageDenied.page.finishAndDismiss();
+  assert.strictEqual(storageDenied.location.hash, 'overview', 'finishAndDismiss should still navigate to overview when storage is denied');
 })();

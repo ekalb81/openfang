@@ -181,6 +181,20 @@ function wizardPage() {
       'Writing': ['Help me write a professional email', 'Improve this paragraph', 'Write a blog intro about AI'],
       'Business': ['Draft a meeting agenda', 'How do I handle a complaint?', 'Create a project status update']
     },
+    localFlag(key) {
+      try {
+        return localStorage.getItem(key) === 'true';
+      } catch (_err) {
+        return false;
+      }
+    },
+    setLocalFlag(key, value) {
+      try {
+        localStorage.setItem(key, value ? 'true' : 'false');
+      } catch (_err) {
+        // Ignore storage-denied browsers; keep onboarding usable with in-memory state.
+      }
+    },
     get currentSuggestions() {
       var tpl = this.templates[this.selectedTemplate];
       var cat = tpl ? tpl.category : 'General';
@@ -195,7 +209,7 @@ function wizardPage() {
       try {
         var res = await OpenFangAPI.post('/api/agents/' + this.createdAgent.id + '/message', { message: text });
         this.tryItMessages.push({ role: 'agent', text: res.response || '(no response)' });
-        localStorage.setItem('of-first-msg', 'true');
+        this.setLocalFlag('of-first-msg', true);
       } catch(e) {
         this.tryItMessages.push({ role: 'agent', text: 'Error: ' + (e.message || 'Could not reach agent') });
       }
@@ -593,7 +607,7 @@ function wizardPage() {
     // ── Step 6: Finish ──
 
     finish() {
-      localStorage.setItem('openfang-onboarded', 'true');
+      this.setLocalFlag('openfang-onboarded', true);
       this.dismissOnboarding();
       // Navigate to agents with chat if an agent was created, otherwise overview
       if (this.createdAgent) {
@@ -605,7 +619,7 @@ function wizardPage() {
     },
 
     finishAndDismiss() {
-      localStorage.setItem('openfang-onboarded', 'true');
+      this.setLocalFlag('openfang-onboarded', true);
       this.dismissOnboarding();
       window.location.hash = 'overview';
     }
