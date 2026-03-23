@@ -484,9 +484,10 @@ homeserver_url = "https://matrix.org"
 access_token_env = "MATRIX_TOKEN"
 user_id = "@openfang-bot:matrix.org"
 default_agent = "assistant"
+auto_accept_invites = false
 ```
 
-5. Invite the bot to the rooms you want it to monitor.
+5. Invite the bot to the rooms you want it to monitor. By default the bot will not auto-join newly invited rooms; set `auto_accept_invites = true` only if you want that behavior.
 6. Restart the daemon.
 
 ### How It Works

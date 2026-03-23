@@ -511,6 +511,7 @@ homeserver_url = "https://matrix.org"
 user_id = "@openfang:matrix.org"
 access_token_env = "MATRIX_ACCESS_TOKEN"
 allowed_rooms = []
+auto_accept_invites = false
 ```
 
 | Field | Type | Default | Description |
@@ -520,6 +521,7 @@ allowed_rooms = []
 | `access_token_env` | string | `"MATRIX_ACCESS_TOKEN"` | Env var holding the Matrix access token. |
 | `allowed_rooms` | list of strings | `[]` | Room IDs to listen in. Empty = all joined rooms. |
 | `default_agent` | string or null | `null` | Agent name to route messages to. |
+| `auto_accept_invites` | bool | `false` | Whether to automatically join invited rooms. Keep this off unless you explicitly want the bot to join any invited room. |
 
 #### `[channels.email]`
 
