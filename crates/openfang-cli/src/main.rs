@@ -3153,20 +3153,32 @@ fn cmd_workflow_list() {
     }
 }
 
-fn cmd_workflow_create(file: PathBuf) {
-    let base = require_daemon("workflow create");
-    if !file.exists() {
-        eprintln!("Workflow file not found: {}", file.display());
+fn load_workflow_json_file(file: &PathBuf) -> serde_json::Value {
+    let metadata = std::fs::metadata(file).unwrap_or_else(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            eprintln!("Workflow file not found: {}", file.display());
+        } else {
+            eprintln!("Error checking workflow file: {e}");
+        }
+        std::process::exit(1);
+    });
+    if !metadata.is_file() {
+        eprintln!("Workflow file is not a regular file: {}", file.display());
         std::process::exit(1);
     }
-    let contents = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+    let contents = std::fs::read_to_string(file).unwrap_or_else(|e| {
         eprintln!("Error reading workflow file: {e}");
         std::process::exit(1);
     });
-    let json_body: serde_json::Value = serde_json::from_str(&contents).unwrap_or_else(|e| {
+    serde_json::from_str(&contents).unwrap_or_else(|e| {
         eprintln!("Invalid JSON: {e}");
         std::process::exit(1);
-    });
+    })
+}
+
+fn cmd_workflow_create(file: PathBuf) {
+    let base = require_daemon("workflow create");
+    let json_body = load_workflow_json_file(&file);
 
     let client = daemon_client();
     let body = daemon_json(
@@ -3255,18 +3267,7 @@ fn cmd_workflow_get(workflow_id: &str) {
 
 fn cmd_workflow_update(workflow_id: &str, file: PathBuf) {
     let base = require_daemon("workflow update");
-    if !file.exists() {
-        eprintln!("Workflow file not found: {}", file.display());
-        std::process::exit(1);
-    }
-    let contents = std::fs::read_to_string(&file).unwrap_or_else(|e| {
-        eprintln!("Error reading workflow file: {e}");
-        std::process::exit(1);
-    });
-    let json_body: serde_json::Value = serde_json::from_str(&contents).unwrap_or_else(|e| {
-        eprintln!("Invalid JSON: {e}");
-        std::process::exit(1);
-    });
+    let json_body = load_workflow_json_file(&file);
 
     let client = daemon_client();
     let body = daemon_json(
