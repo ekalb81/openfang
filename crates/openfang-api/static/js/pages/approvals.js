@@ -9,6 +9,18 @@ function approvalsPage() {
     loadError: '',
     refreshTimer: null,
 
+    syncPendingApprovalStore() {
+      if (typeof Alpine === 'undefined' || typeof Alpine.store !== 'function') return;
+      var appStore = Alpine.store('app');
+      if (!appStore) return;
+      var pending = this.approvals.filter(function(a) { return a.status === 'pending'; });
+      appStore.pendingApprovalCount = pending.length;
+      appStore.lastPendingApprovalSignature = pending
+        .map(function(a) { return a.id; })
+        .sort()
+        .join(',');
+    },
+
     init() {
       var self = this;
       this.loadData();
@@ -40,6 +52,7 @@ function approvalsPage() {
       try {
         var data = await OpenFangAPI.get('/api/approvals');
         this.approvals = data.approvals || [];
+        this.syncPendingApprovalStore();
       } catch(e) {
         this.loadError = e.message || 'Could not load approvals.';
       }
