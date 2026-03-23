@@ -9531,11 +9531,7 @@ fn upsert_provider_url(
     provider: &str,
     url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let content = if config_path.exists() {
-        std::fs::read_to_string(config_path)?
-    } else {
-        String::new()
-    };
+    let content = read_optional_regular_text_file(config_path)?.unwrap_or_default();
 
     let mut doc: toml::Value = if content.trim().is_empty() {
         toml::Value::Table(toml::map::Map::new())
@@ -9672,6 +9668,15 @@ fn escape_secret_env_value(value: &str) -> String {
     escaped
 }
 
+fn read_optional_regular_text_file(path: &std::path::Path) -> Result<Option<String>, std::io::Error> {
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => std::fs::read_to_string(path).map(Some),
+        Ok(_) => Ok(None),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
 fn write_text_file_atomically(
     path: &std::path::Path,
     contents: &str,
@@ -9784,11 +9789,7 @@ fn upsert_channel_config(
     channel_name: &str,
     fields: &HashMap<String, (String, FieldType)>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let content = if config_path.exists() {
-        std::fs::read_to_string(config_path)?
-    } else {
-        String::new()
-    };
+    let content = read_optional_regular_text_file(config_path)?.unwrap_or_default();
 
     let mut doc: toml::Value = if content.trim().is_empty() {
         toml::Value::Table(toml::map::Map::new())
@@ -9853,11 +9854,9 @@ fn remove_channel_config(
     config_path: &std::path::Path,
     channel_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if !config_path.exists() {
+    let Some(content) = read_optional_regular_text_file(config_path)? else {
         return Ok(());
-    }
-
-    let content = std::fs::read_to_string(config_path)?;
+    };
     if content.trim().is_empty() {
         return Ok(());
     }
@@ -11832,13 +11831,9 @@ pub async fn config_set(
     let config_path = state.kernel.config.home_dir.join("config.toml");
 
     // Read existing config as a TOML table, or start fresh
-    let mut table: toml::value::Table = if config_path.exists() {
-        match std::fs::read_to_string(&config_path) {
-            Ok(content) => toml::from_str(&content).unwrap_or_default(),
-            Err(_) => toml::value::Table::new(),
-        }
-    } else {
-        toml::value::Table::new()
+    let mut table: toml::value::Table = match read_optional_regular_text_file(&config_path) {
+        Ok(Some(content)) => toml::from_str(&content).unwrap_or_default(),
+        Ok(None) | Err(_) => toml::value::Table::new(),
     };
 
     // Convert JSON value to TOML value
