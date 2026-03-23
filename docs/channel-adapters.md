@@ -1,12 +1,12 @@
 # Channel Adapters
 
-OpenFang connects to messaging platforms through **40 channel adapters**, allowing users to interact with their agents across every major communication platform. Adapters span consumer messaging, enterprise collaboration, social media, community platforms, privacy-focused protocols, and generic webhooks.
+OpenFang connects to messaging platforms through **42 channel adapters**, allowing users to interact with their agents across every major communication platform. Adapters span consumer messaging, enterprise collaboration, social media, community platforms, privacy-focused protocols, and generic webhooks.
 
 All adapters share a common foundation: graceful shutdown via `watch::channel`, exponential backoff on connection failures, `Zeroizing<String>` for secrets, automatic message splitting for platform limits, per-channel model/prompt overrides, DM/group policy enforcement, per-user rate limiting, and output formatting (Markdown, TelegramHTML, SlackMrkdwn, PlainText).
 
 ## Table of Contents
 
-- [All 40 Channels](#all-40-channels)
+- [All 42 Channels](#all-42-channels)
 - [Channel Configuration](#channel-configuration)
 - [Channel Overrides](#channel-overrides)
 - [Formatter, Rate Limiter, and Policies](#formatter-rate-limiter-and-policies)
@@ -23,7 +23,7 @@ All adapters share a common foundation: graceful shutdown via `watch::channel`, 
 
 ---
 
-## All 40 Channels
+## All 42 Channels
 
 ### Core (7)
 
@@ -37,7 +37,7 @@ All adapters share a common foundation: graceful shutdown via `watch::channel`, 
 | Matrix | Client-Server API `/sync` | `MATRIX_ACCESS_TOKEN` | `Matrix` |
 | Email | IMAP + SMTP | `EMAIL_PASSWORD` | `Email` |
 
-### Enterprise (8)
+### Enterprise (9)
 
 | Channel | Protocol | Env Vars | ChannelType Variant |
 |---------|----------|----------|---------------------|
@@ -46,6 +46,7 @@ All adapters share a common foundation: graceful shutdown via `watch::channel`, 
 | Google Chat | Service account webhook | `GOOGLE_CHAT_SA_KEY`, `GOOGLE_CHAT_SPACE` | `Custom("google_chat")` |
 | Webex | Bot SDK WebSocket | `WEBEX_BOT_TOKEN` | `Custom("webex")` |
 | Feishu / Lark | Open Platform webhook | `FEISHU_APP_ID`, `FEISHU_APP_SECRET` | `Custom("feishu")` |
+| WeCom | WeChat Work API webhook + callbacks | `WECOM_SECRET` | `Custom("wecom")` |
 | Rocket.Chat | REST polling | `ROCKETCHAT_TOKEN`, `ROCKETCHAT_URL` | `Custom("rocketchat")` |
 | Zulip | Event queue long-polling | `ZULIP_EMAIL`, `ZULIP_API_KEY`, `ZULIP_URL` | `Custom("zulip")` |
 | XMPP | XMPP protocol (stub) | `XMPP_JID`, `XMPP_PASSWORD`, `XMPP_SERVER` | `Custom("xmpp")` |
@@ -88,7 +89,7 @@ All adapters share a common foundation: graceful shutdown via `watch::channel`, 
 | Nostr | NIP-01 relay WebSocket | `NOSTR_PRIVATE_KEY`, `NOSTR_RELAY` | `Custom("nostr")` |
 | Mumble | TCP text protocol | `MUMBLE_SERVER`, `MUMBLE_USERNAME`, `MUMBLE_PASSWORD` | `Custom("mumble")` |
 
-### Workplace (4)
+### Workplace (5)
 
 | Channel | Protocol | Env Vars | ChannelType Variant |
 |---------|----------|----------|---------------------|
@@ -96,6 +97,7 @@ All adapters share a common foundation: graceful shutdown via `watch::channel`, 
 | Flock | Webhook | `FLOCK_TOKEN` | `Custom("flock")` |
 | Twist | API v3 polling | `TWIST_TOKEN` | `Custom("twist")` |
 | DingTalk | Robot API webhook | `DINGTALK_TOKEN`, `DINGTALK_SECRET` | `Custom("dingtalk")` |
+| DingTalk Stream | Stream Mode WebSocket | `DINGTALK_APP_KEY`, `DINGTALK_APP_SECRET`, `DINGTALK_ROBOT_CODE` | `Custom("dingtalk_stream")` |
 
 ### Notification (2)
 
@@ -162,7 +164,7 @@ default_agent = "social-media"
 | Matrix | `MATRIX_ACCESS_TOKEN` |
 | Email | `EMAIL_PASSWORD` |
 
-Env vars for all other channels are listed in the [All 40 Channels](#all-40-channels) tables above.
+Env vars for all other channels are listed in the [All 42 Channels](#all-42-channels) tables above.
 
 ---
 

@@ -1,4 +1,4 @@
-//! Channels screen: list all 41 adapters, setup wizards, test & toggle.
+//! Channels screen: list all 42 adapters, setup wizards, test & toggle.
 
 use crate::tui::theme;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -27,7 +27,7 @@ pub enum ChannelStatus {
     NotConfigured,
 }
 
-// ── Channel definitions — all 41 adapters ───────────────────────────────────
+// ── Channel definitions — all 42 adapters ───────────────────────────────────
 
 struct ChannelDef {
     name: &'static str,
