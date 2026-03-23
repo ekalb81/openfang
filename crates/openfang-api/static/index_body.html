@@ -4254,12 +4254,15 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                 <h4>Agent Memory</h4>
                 <p>Each agent has its own key-value memory store. Agents use memory to persist preferences, notes, and context between conversations.</p>
               </div>
-              <select class="form-select" style="width:200px;margin-left:16px" x-model="memAgentId" @change="loadKv()">
-                <option value="">Select agent...</option>
-                <template x-for="a in $store.app.agents" :key="a.id">
-                  <option :value="a.id" x-text="a.name"></option>
-                </template>
-              </select>
+              <div>
+                <select class="form-select" style="width:200px;margin-left:16px" x-model="memAgentId" @change="loadKv()">
+                  <option value="">Select agent...</option>
+                  <template x-for="a in availableAgents" :key="a.id">
+                    <option :value="a.id" x-text="a.name"></option>
+                  </template>
+                </select>
+                <div class="text-xs text-dim mt-1" x-show="!availableAgents.length">Agent list unavailable right now. Open the Agents page to repopulate it.</div>
+              </div>
             </div>
             <div x-show="memLoading" class="loading-state"><div class="spinner"></div><span>Loading memory...</span></div>
             <div x-show="!memLoading && memLoadError" class="error-state">

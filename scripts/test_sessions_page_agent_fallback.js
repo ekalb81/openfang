@@ -5,6 +5,8 @@ const assert = require('assert');
 
 const sessionsPath = path.join(__dirname, '..', 'crates', 'openfang-api', 'static', 'js', 'pages', 'sessions.js');
 const source = fs.readFileSync(sessionsPath, 'utf8');
+const indexBodyPath = path.join(__dirname, '..', 'crates', 'openfang-api', 'static', 'index_body.html');
+const indexBody = fs.readFileSync(indexBodyPath, 'utf8');
 
 async function loadPageWithStore(storeImpl) {
   const context = {
@@ -39,6 +41,8 @@ async function loadPageWithStore(storeImpl) {
   return page;
 }
 
+assert.ok(indexBody.includes('x-for="a in availableAgents"'), 'sessions memory selector should iterate through availableAgents instead of hard-wiring $store.app.agents');
+
 (async () => {
   let healthyStore;
   const pageWithAgents = await loadPageWithStore(function(name) {
@@ -56,6 +60,8 @@ async function loadPageWithStore(storeImpl) {
   assert.strictEqual(pageWithAgents.loading, false, 'loadSessions should finish loading when agents are available');
   assert.strictEqual(pageWithAgents.sessions[0].agent_name, 'Alpha', 'loadSessions should map known agent IDs to agent names');
   assert.strictEqual(pageWithAgents.sessions[1].agent_name, 'Stored Beta', 'loadSessions should preserve a session-provided agent name when the app store does not know the agent');
+  assert.strictEqual(pageWithAgents.availableAgents.length, 1, 'availableAgents should expose the shared app-store agent list when available');
+  assert.strictEqual(pageWithAgents.availableAgents[0].name, 'Alpha', 'availableAgents should preserve shared agent metadata');
 
   pageWithAgents.openInChat(pageWithAgents.sessions[0]);
   assert.strictEqual(healthyStore.pendingAgent.id, 'agent-1', 'openInChat should reuse the full known agent object when the app store is available');
@@ -98,6 +104,8 @@ async function loadPageWithStore(storeImpl) {
   assert.strictEqual(pageWithoutStore.loading, false, 'loadSessions should finish loading even without the app store');
   assert.strictEqual(pageWithoutStore.sessions.length, 1, 'loadSessions should still populate sessions without the app store');
   assert.strictEqual(pageWithoutStore.sessions[0].agent_name, '', 'agent names should still fall back to blank when neither the app store nor the session payload provides a name');
+  assert.ok(Array.isArray(pageWithoutStore.availableAgents), 'availableAgents should still resolve to an array when the app store is unavailable');
+  assert.strictEqual(pageWithoutStore.availableAgents.length, 0, 'availableAgents should degrade to an empty list when the app store is unavailable');
 
   pageWithoutStore.openInChat(pageWithoutStore.sessions[0]);
   assert.strictEqual(unavailableHash, 'agents', 'openInChat should still navigate to the agents page when the app store is unavailable');

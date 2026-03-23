@@ -48,6 +48,19 @@ function sessionsPage() {
 
     async loadData() { return this.loadSessions(); },
 
+    appAgents() {
+      try {
+        var appStore = Alpine.store('app');
+        return (appStore && Array.isArray(appStore.agents)) ? appStore.agents : [];
+      } catch (_storeError) {
+        return [];
+      }
+    },
+
+    get availableAgents() {
+      return this.appAgents();
+    },
+
     get filteredSessions() {
       var f = this.searchFilter.toLowerCase();
       if (!f) return this.sessions;
