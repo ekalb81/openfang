@@ -9612,7 +9612,8 @@ pub async fn create_skill(
     );
 
     let toml_path = skill_dir.join("skill.toml");
-    if let Err(e) = std::fs::write(&toml_path, &toml_content) {
+    if let Err(e) = write_text_file_atomically(&toml_path, &toml_content) {
+        let _ = std::fs::remove_dir(&skill_dir);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": format!("Failed to write skill.toml: {e}")})),
