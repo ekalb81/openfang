@@ -12,6 +12,7 @@ use openfang_types::config::{McpServerConfigEntry, McpTransportEntry};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
+use uuid::Uuid;
 
 /// The integration registry — holds all known templates and install state.
 pub struct IntegrationRegistry {
@@ -77,8 +78,55 @@ impl IntegrationRegistry {
         if let Some(parent) = self.integrations_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&self.integrations_path, content)?;
-        Ok(())
+
+        let file_name = self
+            .integrations_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| {
+                ExtensionError::Io(std::io::Error::other(
+                    "Failed to determine integrations registry file name",
+                ))
+            })?;
+        let tmp_path = self
+            .integrations_path
+            .with_file_name(format!(".{file_name}.tmp-{}", Uuid::new_v4()));
+
+        let write_result = (|| -> ExtensionResult<()> {
+            #[cfg(unix)]
+            {
+                use std::fs::OpenOptions;
+                use std::io::Write;
+                use std::os::unix::fs::OpenOptionsExt;
+
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&tmp_path)?;
+                file.write_all(content.as_bytes())?;
+                file.sync_all()?;
+            }
+
+            #[cfg(not(unix))]
+            {
+                use std::io::Write;
+
+                let mut file = std::fs::File::create(&tmp_path)?;
+                file.write_all(content.as_bytes())?;
+                file.sync_all()?;
+            }
+
+            std::fs::rename(&tmp_path, &self.integrations_path)?;
+            Ok(())
+        })();
+
+        if write_result.is_err() {
+            let _ = std::fs::remove_file(&tmp_path);
+        }
+
+        write_result
     }
 
     /// Get a template by ID.
@@ -369,5 +417,37 @@ mod tests {
 
         assert_eq!(count, 0);
         assert_eq!(reg.installed_count(), 0);
+    }
+
+    #[test]
+    fn registry_save_installed_uses_atomic_same_directory_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut reg = IntegrationRegistry::new(dir.path());
+        reg.load_bundled();
+
+        let entry = InstalledIntegration {
+            id: "github".to_string(),
+            installed_at: chrono::Utc::now(),
+            enabled: true,
+            oauth_provider: None,
+            config: HashMap::new(),
+        };
+        reg.install(entry).unwrap();
+
+        let path = dir.path().join("integrations.toml");
+        assert!(path.is_file());
+        let temp_paths: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.contains(".integrations.toml.tmp-"))
+            })
+            .collect();
+        assert!(
+            temp_paths.is_empty(),
+            "temporary integrations registry file should be cleaned up after save"
+        );
     }
 }
