@@ -287,6 +287,12 @@ document.addEventListener('alpine:init', function() {
 function app() {
   return {
     page: 'agents',
+    emitPageLeave(nextPage) {
+      if (!this.page || this.page === nextPage) return;
+      window.dispatchEvent(new CustomEvent('page-leave', {
+        detail: { from: this.page, to: nextPage }
+      }));
+    },
     themeMode: localStorage.getItem('openfang-theme-mode') || 'system',
     theme: (() => {
       var mode = localStorage.getItem('openfang-theme-mode') || 'system';
@@ -334,7 +340,10 @@ function app() {
           hash = pageRedirects[hash];
           window.location.hash = hash;
         }
-        if (validPages.indexOf(hash) >= 0) self.page = hash;
+        if (validPages.indexOf(hash) >= 0) {
+          self.emitPageLeave(hash);
+          self.page = hash;
+        }
       }
       window.addEventListener('hashchange', handleHash);
       handleHash();
@@ -379,6 +388,7 @@ function app() {
     },
 
     navigate(p) {
+      this.emitPageLeave(p);
       this.page = p;
       window.location.hash = p;
       this.mobileMenuOpen = false;
