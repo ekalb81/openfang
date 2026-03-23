@@ -19,6 +19,7 @@ function overviewPage() {
     async loadOverview() {
       this.loading = true;
       this.loadError = '';
+      this.checklistDismissed = this.localFlag('of-checklist-dismissed');
       try {
         await Promise.all([
           this.loadHealth(),
@@ -178,7 +179,7 @@ function overviewPage() {
     },
 
     // ── Setup Checklist ──
-    checklistDismissed: localStorage.getItem('of-checklist-dismissed') === 'true',
+    checklistDismissed: false,
 
     appAgents() {
       try {
@@ -189,13 +190,29 @@ function overviewPage() {
       }
     },
 
+    localFlag(key) {
+      try {
+        return localStorage.getItem(key) === 'true';
+      } catch(_err) {
+        return false;
+      }
+    },
+
+    setLocalFlag(key, value) {
+      try {
+        localStorage.setItem(key, value ? 'true' : 'false');
+      } catch(_err) {
+        // Ignore storage-denied browsers; keep in-memory state only.
+      }
+    },
+
     get setupChecklist() {
       return [
         { key: 'provider', label: 'Configure an LLM provider', done: this.configuredProviders.length > 0, action: '#settings' },
         { key: 'agent', label: 'Create your first agent', done: this.appAgents().length > 0, action: '#agents' },
-        { key: 'chat', label: 'Send your first message', done: localStorage.getItem('of-first-msg') === 'true', action: '#chat' },
+        { key: 'chat', label: 'Send your first message', done: this.localFlag('of-first-msg'), action: '#chat' },
         { key: 'channel', label: 'Connect a messaging channel', done: this.channels.length > 0, action: '#channels' },
-        { key: 'skill', label: 'Browse or install a skill', done: localStorage.getItem('of-skill-browsed') === 'true', action: '#skills' }
+        { key: 'skill', label: 'Browse or install a skill', done: this.localFlag('of-skill-browsed'), action: '#skills' }
       ];
     },
 
@@ -210,7 +227,7 @@ function overviewPage() {
 
     dismissChecklist() {
       this.checklistDismissed = true;
-      localStorage.setItem('of-checklist-dismissed', 'true');
+      this.setLocalFlag('of-checklist-dismissed', true);
     },
 
     formatUptime(secs) {
